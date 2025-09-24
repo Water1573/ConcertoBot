@@ -105,7 +105,7 @@ class Bilibili(Module):
                 await asyncio.sleep(interval)
         asyncio.run_coroutine_threadsafe(dynamic_loop(), self.robot.loop)
         async def fans_loop():
-            cron = MiniCron(self.config["env"]["cron"], lambda: sync(self.fans_check()))
+            cron = MiniCron(self.config["env"]["cron"], lambda: sync(self.fans_check()), loop=self.robot.loop)
             while True:
                 try:
                     await cron.run()
@@ -157,7 +157,7 @@ class Bilibili(Module):
         else:
             msg = "这里还未拥有关注列表，请管理员添加吧~"
             self.reply(msg)
-        self.reply_forward(nodes, source=title)
+        self.reply_forward(nodes, title, "哔哩哔哩")
 
     @via(lambda self: self.at_or_private() and self.au(2) and self.match(r"^关注\s?(\S+)$"))
     async def subscribe(self):
@@ -177,7 +177,7 @@ class Bilibili(Module):
                     "avatar": avatar,
                     "fans": fans,
                     "keyword": "",
-                    "anti_keyword": "",
+                    "anti_keyword": "(抽奖|中奖)",
                     "dynamic_notice": True,
                     "live_notice": True,
                     "fans_notice": False,
@@ -253,21 +253,28 @@ class Bilibili(Module):
                             self.reply(msg)
                             return
                     title = f"[哔哩哔哩] {dyn["author"]}{self.type_msg.get(d_type, "发布了新动态")}"
+                    if d_type == "DYNAMIC_TYPE_AV":
+                        video_title = dyn["content"].split("\n")[0]
+                        if len(video_title) < 40:
+                            title = f"[哔哩哔哩] {video_title}"
                     nodes = []
                     nodes.append(self.node(dyn["url"]))
                     msg = dyn["content"]
-                    for img in dyn["imgs"]:
-                        msg += f"[CQ:image,file={img}]"
+                    if len(dyn["imgs"]) == 1:
+                        img = dyn["imgs"][0]
+                        nodes.append(self.node(f"[CQ:image,file={img}]"))
+                    else:
+                        for img in dyn["imgs"]:
+                            msg += f"[CQ:image,file={img}]"
                     nodes.append(self.node(msg))
                     if ori := dyn["origin"]:
-                        nodes.append(self.node("====================\n以下是转发的动态内容:"))
-                        nodes.append(self.node(ori["url"]))
-                        msg = f"{ori["author"]}:\n"
+                        msg = f"以下是转发内容:\n====================\n"
+                        msg += f"{ori["author"]}:\n"
                         msg += ori["content"]
                         for img in ori["imgs"]:
                             msg += f"[CQ:image,file={img}]"
                         nodes.append(self.node(msg))
-                    self.reply_forward(nodes, title)
+                    self.reply_forward(nodes, title, dyn["author"])
                     return
                 else:
                     msg = f"{name}没有发过任何动态..."
@@ -359,7 +366,7 @@ class Bilibili(Module):
     async def init_browser(self):
         """初始化浏览器"""
         if not HAS_PLAYWRIGHT:
-            return None
+            return
 
         if self.browser:
             return self.browser
@@ -383,7 +390,7 @@ class Bilibili(Module):
         url = f"https://m.bilibili.com/dynamic/{dynamic_id}"
         browser = await self.init_browser()
         if not browser:
-            return None
+            return
             
         context = await browser.new_context(
             device_scale_factor=2,
@@ -407,7 +414,7 @@ class Bilibili(Module):
         try:
             await page.goto(url, wait_until="networkidle", timeout=10000)
             if page.url == "https://m.bilibili.com/404":
-                return None
+                return
 
             await page.add_script_tag(content="""
                 document.querySelectorAll(".opus-float-btn").forEach(v=>v.remove());
@@ -447,14 +454,13 @@ class Bilibili(Module):
         finally:
             await page.close()
             await context.close()
-        return None
 
     async def get_dynamic_screenshot_pc(self, dynamic_id) -> str:
         """电脑端动态截图"""
         url = f"https://t.bilibili.com/{dynamic_id}"
         browser = await self.init_browser()
         if not browser:
-            return None
+            return
             
         context = await browser.new_context(
             viewport={"width": 2560, "height": 1080},
@@ -477,7 +483,7 @@ class Bilibili(Module):
         try:
             await page.goto(url, wait_until="networkidle", timeout=10000)
             if page.url == "https://www.bilibili.com/404":
-                return None
+                return
 
             card = await page.query_selector(".card")
             if card:
@@ -494,7 +500,6 @@ class Bilibili(Module):
             self.errorf(f"截取动态【{url}】时发生错误：{traceback.format_exc()}")
         finally:
             await context.close()
-        return None
 
     async def dynamic_check(self, interval=10):
         """动态检查"""
@@ -537,11 +542,19 @@ class Bilibili(Module):
                                 await asyncio.sleep(3)
                         continue
                 title = f"[哔哩哔哩] {dyn["author"]}{self.type_msg.get(d_type, "发布了新动态")}"
+                if d_type == "DYNAMIC_TYPE_AV":
+                    video_title = dyn["content"].split("\n")[0]
+                    if len(video_title) < 40:
+                        title = f"[哔哩哔哩] {video_title}"
                 nodes = []
                 nodes.append(self.node(dyn["url"]))
                 msg = dyn["content"]
-                for img in dyn["imgs"]:
-                    msg += f"[CQ:image,file={img}]"
+                if len(dyn["imgs"]) == 1:
+                    img = dyn["imgs"][0]
+                    nodes.append(self.node(f"[CQ:image,file={img}]"))
+                else:
+                    for img in dyn["imgs"]:
+                        msg += f"[CQ:image,file={img}]"
                 nodes.append(self.node(msg))
                 if ori := dyn["origin"]:
                     nodes.append(self.node("====================\n以下是转发的动态内容:"))
@@ -557,7 +570,7 @@ class Bilibili(Module):
                         anti_pattern = self.config[owner_id]["sub"][uid].get("anti_keyword")
                         if anti_pattern and re.search(anti_pattern, msg):
                             continue
-                        self.reply_forward_back(owner_id, nodes, title)
+                        self.reply_forward_back(owner_id, nodes, title, dyn["author"])
                         await asyncio.sleep(3)
                 await asyncio.sleep(3)
             await asyncio.sleep(delay)
@@ -736,7 +749,6 @@ class Bilibili(Module):
         dynamics = await self.get_user_dynamics(uid)
         if dynamics:
             return self.parse_dynamic(dynamics[0])
-        return None
 
     async def get_user_simple_info(self, uid: str, fans=False) -> dict | None:
         """获取用户信息"""
@@ -745,7 +757,7 @@ class Bilibili(Module):
             u = user.User(int(uid))
             # https://api.bilibili.com/x/space/wbi/acc/info
             user_info = await u.get_user_info()
-            fans_count = None
+            fans_count = 0
             if fans:
                 # https://api.bilibili.com/x/relation/stat
                 relation_info = await u.get_relation_info()
@@ -766,7 +778,6 @@ class Bilibili(Module):
             self.warnf(f"获取{name}({uid})的用户信息返回码异常 {e.code} {e.msg}")
         except Exception:
             self.warnf(f"查询{name}({uid})的用户信息请求失败: {traceback.format_exc()}")
-        return None
 
     def get_local_uid(self, user_match: str) -> int | None:
         """获取用户UID"""
@@ -778,7 +789,6 @@ class Bilibili(Module):
                     return uid
         if re.search(r"^[0-9]+$", user_match):
             return user_match
-        return None
 
     def get_local_name(self, uid: str) -> str | None:
         """通过UID获取用户名"""
@@ -787,7 +797,6 @@ class Bilibili(Module):
                 continue
             if uid in self.config[owner_id]["sub"]:
                 return self.config[owner_id]["sub"][uid]["name"]
-        return None
 
     async def get_info_by_name(self, name: str) -> dict | None:
         """通过名称获取信息"""
@@ -806,10 +815,10 @@ class Bilibili(Module):
                         "fans": result["fans"],
                         "avatar": avatar,
                     }
-            return None
+            return
         except Exception:
             self.warnf(f"查询用户信息请求失败: {traceback.format_exc()}")
-            return None
+            return
 
     async def get_info(self, user_match: str) -> dict | None:
         """获取用户信息"""
@@ -817,22 +826,14 @@ class Bilibili(Module):
         info = None
         if uid:
             info = await self.get_user_simple_info(uid, fans=True)
+        else:
+            info = await self.get_info_by_name(user_match)
         if info:
-            self.update_follow_list_info(uid, {
+            self.update_follow_list_info(info["uid"], {
                 "name": info["name"],
                 "fans": info["fans"],
                 "avatar": info["avatar"]
             })
-        else:
-            info = await self.get_info_by_name(user_match)
-            if info:
-                self.update_follow_list_info(info["uid"], {
-                    "name": info["name"],
-                    "fans": info["fans"],
-                    "avatar": info["avatar"]
-                })
-            else:
-                return None
         return info
 
     def get_uid_list(self, get_type: str) -> list:
@@ -952,11 +953,11 @@ class Bilibili(Module):
             user_id = int(owner_id[1:])
             return send_msg(self.robot, "private", user_id, msg)
 
-    def reply_forward_back(self, owner_id: str, nodes: list, source=None) -> dict:
+    def reply_forward_back(self, owner_id: str, nodes: list, source=None, summary=None) -> dict:
         """回复消息"""
         if owner_id.startswith("g"):
             group_id = int(owner_id[1:])
-            return send_forward_msg(self.robot, nodes, group_id=group_id, source=source)
+            return send_forward_msg(self.robot, nodes, group_id=group_id, source=source, summary=summary)
         else:
             user_id = int(owner_id[1:])
-            return send_forward_msg(self.robot, nodes, user_id=user_id, source=source)
+            return send_forward_msg(self.robot, nodes, user_id=user_id, source=source, summary=summary)

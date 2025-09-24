@@ -5,7 +5,7 @@ import random
 
 import httpx
 
-from src.utils import Module, build_node, via
+from src.utils import Module, via
 
 class KFC(Module):
     """疯狂星期四模块"""
@@ -58,7 +58,7 @@ class KFC(Module):
             msg = resp.text
             self.reply(msg, reply=True)
         except Exception as e:
-            return self.reply_forward(build_node(f"{e}"), source="KFC模块请求失败")
+            return self.reply_forward(self.node(f"{e}"), source="KFC模块请求失败")
 
     @via(lambda self: self.group_at() and self.au(1)
          and self.match(r"^(开启|打开|启用|允许|关闭|禁止|取消)?疯狂星期四$"))

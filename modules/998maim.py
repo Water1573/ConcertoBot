@@ -38,6 +38,7 @@ from src.utils import (
     group_member_info,
     poke,
     reply_id,
+    send_forward_msg,
     send_group_ai_record,
     set_group_ban,
     set_group_kick,
@@ -198,7 +199,14 @@ class Maim(Module):
         else:
             self.errorf("无法识别的消息类型")
             return
-        info = reply_id(self.robot, msg_type, target_id, msg)
+        if len(msg) > 100:
+            source = msg.split("\n")[0]
+            if msg_type == "group":
+                info = send_forward_msg(self.robot, self.node(msg), group_id=target_id, source=source)
+            else:
+                info = send_forward_msg(self.robot, self.node(msg), user_id=target_id, source=source)
+        else:
+            info = reply_id(self.robot, msg_type, target_id, msg)
         if status_ok(info):
             qq_message_id = info["data"].get("message_id")
             mmc_message_id = message_base.message_info.message_id

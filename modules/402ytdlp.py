@@ -112,7 +112,7 @@ class Ytdlp(Module):
                 set_emoji(self.robot, self.event.msg_id, 124)
             info = self.get_info(url, opts)
             if not info:
-                return self.reply("不支持的视频链接!", reply=True)
+                return self.reply("请求失败或不支持的视频链接!", reply=True)
             elif info.get("type") == "playlist" and ("bilibili.com" in url or "b23.tv" in url):
                 url = info["url"] + "?p=1"
             elif info.get("type") == "playlist":
@@ -186,8 +186,8 @@ class Ytdlp(Module):
         except DownloadError as e:
             nodes = self.node(f"{format_to_log(e.msg)}")
             return self.reply_forward(nodes, source="视频解析失败")
-        except Exception:
-            nodes = self.node(f"{traceback.format_exc()}")
+        except Exception as e:
+            nodes = self.node(f"{e}")
             return self.reply_forward(nodes, source="视频处理失败")
         finally:
             if os.path.exists(true_path):
@@ -272,6 +272,10 @@ class Ytdlp(Module):
         site = info.get("extractor", "")
         series = info.get("series", "")
         title = info.get("title", "[未知]")
+        uploader = info.get("uploader", "")
+        thumbnail = info.get("thumbnail", "")
+        img = get_image_base64(self.robot, thumbnail)
+        duration = info.get("duration", 0)
         if info.get("_type") == "playlist":
             description = info.get("description", "")
             return {
@@ -280,18 +284,17 @@ class Ytdlp(Module):
                 "site": site,
                 "series": series,
                 "title": title,
+                "uploader": uploader,
                 "description": description,
+                "duration": duration,
+                "img": img,
             }
         else:
             description = info.get("description", "")
-            uploader = info.get("uploader", "")
-            duration = info.get("duration", 0)
-            thumbnail = info.get("thumbnail", "")
             ext = info.get("ext", "[未知格式]")
             resolution = info.get("resolution", "[未知分辨率]")
             size = info.get("size", 0)
             view_count = info.get("view_count", 0)
-            img = get_image_base64(self.robot, thumbnail)
             return {
                 "type": "video",
                 "url": url,

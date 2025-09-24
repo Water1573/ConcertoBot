@@ -14,7 +14,7 @@ from urllib.parse import quote
 import httpx
 from PIL import Image
 
-from src.utils import MiniCron, Module, build_node, calc_time, reply_back, set_emoji, via
+from src.utils import MiniCron, Module, calc_time, reply_back, set_emoji, via
 
 class Picture(Module):
     """图片处理模块"""
@@ -25,7 +25,10 @@ class Picture(Module):
             "打分 | 对图片色气度进行打分",
             "saucenao [图片] | 使用SauceNAO搜索图片",
             "来张色图 | 调用Lolicon API获取图片",
-            "清晰术 | 调用Real-CUGAN增强图片清晰度"
+            "来张梗图 | 调用煎蛋无聊图获取图片",
+            "清晰术 | 调用Real-CUGAN增强图片清晰度",
+            "搜图 | 调用谷歌搜图搜索图片",
+            "搜番 | 调用TraceMoe搜索番剧",
         ],
     }
     GLOBAL_CONFIG = {
@@ -66,48 +69,54 @@ class Picture(Module):
             crontab = config["cron"]
             if not crontab or prob == 0:
                 continue
-            cron = MiniCron(crontab, lambda o=owner,c=config: self.jiandan_msg_task(o, c))
+            cron = MiniCron(crontab, lambda o=owner,c=config: self.jiandan_msg_task(o, c), loop=self.robot.loop)
             self.printf(f"已为[{owner}]开启煎蛋无聊图定时任务[{crontab}]，概率{prob:.2%}")
             asyncio.run_coroutine_threadsafe(cron.run(), self.robot.loop)
 
     async def jiandan_msg_task(self, owner: str, config: dict) -> None:
         """自动发送煎蛋无聊图"""
-        if random.random() > config["probability"]:
-            return
-        data_list = self.get_jiandan()
+        ran_int = random.random()
+        prob = config["probability"]
+        if ran_int > prob:
+            return self.printf(f"[煎蛋无聊图][{owner}]因概率未达而取消({ran_int:.2}>{prob:.2})")
+        data_list = await self.get_jiandan()
         if not data_list:
-            return self.reply("未获取到新的图")
-        data = {}
+            return self.printf(f"[煎蛋无聊图][{owner}]因无有效数据而取消")
+        data = None
         for item in data_list:
             if item.get("id") not in config["hist"]:
                 data = item
                 break
-            return self.reply("未获取到新的图")
+        if not data:
+            return self.printf(f"[煎蛋无聊图][{owner}]因无新评论而取消")
         config["hist"].append(data.get("id"))
         config["hist"] = config["hist"][-10:]
         self.save_config()
-        msg = data.get("content")
+        msg = data.get("content").strip()
         msg = re.sub(r"""<img\s+src="([^"]+)"\s*/?>""", r"[CQ:image,file=\1]", msg)
         reply_back(self.robot, owner, msg)
 
     @via(lambda self: self.au(2) and self.at_or_private()
-         and self.match(r"^(来|发)(张|个)(屌|弔|吊)图$"))
+         and self.match(r"^(来|发)(张|个)(无聊|屌|弔|吊|梗)图$"))
     def jiandan_msg(self):
         """获取煎蛋无聊图"""
+        if not self.is_private():
+            set_emoji(self.robot, self.event.msg_id, 124)
         config = self.config[self.owner_id]["jiandan"]
         data_list = self.get_jiandan()
         if not data_list:
-            return self.reply("未获取到新的图")
-        data = {}
+            return self.reply("未获取到任何有效数据")
+        data = None
         for item in data_list:
             if item.get("id") not in config["hist"]:
                 data = item
                 break
-            return self.reply("未获取到新的图")
+        if not data:
+            return self.reply("未获取到新的评论")
         config["hist"].append(data.get("id"))
         config["hist"] = config["hist"][-10:]
         self.save_config()
-        msg = data.get("content")
+        msg = data.get("content").strip()
         msg = re.sub(r"""<img\s+src="([^"]+)"\s*/?>""", r"[CQ:image,file=\1]", msg)
         self.reply(msg)
 
@@ -127,7 +136,7 @@ class Picture(Module):
         self.success = True
         try:
             encoded_url = quote(url, safe="")
-            response = httpx.Client().get(api_url + encoded_url, timeout=10)
+            response = httpx.get(api_url + encoded_url, timeout=5)
             response.raise_for_status()
             data = response.json()
             if isinstance(data, list) and len(data) > 0:
@@ -157,25 +166,26 @@ class Picture(Module):
             return self.reply("解析API响应失败", reply=True)
 
     @via(lambda self: self.au(2) and self.at_or_private()
-         and self.match(r"^(来|发|看|给|瑟|涩|se)\S{0,5}(图|瑟|涩|se|好看|好康|可爱)的?"))
+         and self.match(r"^(更|超|超级|很|再|无敌){0,2}?(来|发|看|给|瑟|涩|色|se)\S{0,5}(图|瑟|涩|色|se|好看|好康|可爱)的?"))
     def lolicon(self):
         tags = []
         r18_mode = 0
         if len(self.event.text.split(" ")) > 1:
             tags = self.event.text.split(" ")[1:]
-        if self.match(r"(更|超|很|再|无敌)"):
+        if self.match(r"(更|超|超级|很|再|无敌)"):
             r18_mode = 1
         try:
             url = ""
             if not self.is_private():
                 set_emoji(self.robot, self.event.msg_id, 124)
-            self.printf(f"正在使用Lolicon API获取图片...")
+            self.printf("正在使用Lolicon API获取图片...")
             data = self.retry(lambda: self.get_lolicon_image(r18_mode, tags))
             self.printf(f"Lolicon API返回结果:\n{data}", level="DEBUG")
             if data:
                 author = f"{data["author"]}(uid: {data["uid"]})"
                 title = f"{data["title"]}(pid: {data["pid"]})"
                 url = data.get("urls", {}).get("original")
+                url = self.get_img_url(url)
                 if data["r18"]:
                     msg = f"来自画师{author}的作品: {title}\n(NSFW图片仅发送URL)\n{url}"
                 else:
@@ -233,7 +243,7 @@ class Picture(Module):
                 return self.reply(data, reply=True)
             nodes = []
             for img_msg in data:
-                nodes.append(build_node(img_msg))
+                nodes.append(self.node(img_msg))
             if not self.is_private():
                 set_emoji(self.robot, self.event.msg_id, 66)
             self.reply_forward(nodes, source="谷歌搜图结果")
@@ -263,7 +273,7 @@ class Picture(Module):
                 return self.reply(data, reply=True)
             nodes = []
             for img_msg in data:
-                nodes.append(build_node(img_msg))
+                nodes.append(self.node(img_msg))
             if not self.is_private():
                 set_emoji(self.robot, self.event.msg_id, 66)
             self.reply_forward(nodes, source="SauceNAO搜索结果")
@@ -289,7 +299,7 @@ class Picture(Module):
             return self.reply("星辰坐标未对齐，法阵无法唤醒!")
         cmd = self.event.text
         try:
-            resp = httpx.Client().get(url)
+            resp = httpx.get(url)
             img = Image.open(io.BytesIO(resp.content))
             img_width, img_height = img.size
             scale = 2
@@ -339,10 +349,12 @@ class Picture(Module):
             encoded_image = f"data:image/jpeg;base64,{base64_str}"
             payload = {"data": [encoded_image, model_name, 2]}
             headers = {"Content-Type": "application/json"}
-            response = httpx.Client(timeout=300, follow_redirects=True).post(
+            response = httpx.post(
                 predict_url, 
                 json=payload, 
-                headers=headers
+                headers=headers,
+                timeout=300,
+                follow_redirects=True
             )
             response.raise_for_status()
             result = response.json()
@@ -361,7 +373,7 @@ class Picture(Module):
         url = f"https://api.lolicon.app/setu/v2?r18={r18}"
         for tag in tags or []:
             url += f"&tag={quote(tag)}"
-        resp = httpx.Client(timeout=5).get(url)
+        resp = httpx.get(url, timeout=5)
         data = resp.json()
         self.printf(f"调用LoliconAPI({url})返回结果：{data}", level="DEBUG")
         if data.get("data") == []:
@@ -390,7 +402,7 @@ class Picture(Module):
             "output_type": 2,
             "numres": 3
         }
-        resp = httpx.Client(timeout=10, proxy=proxies).get(saucenao_url, params=params)
+        resp = httpx.get(saucenao_url, params=params, timeout=10, proxy=proxies)
         if results :=resp.json().get("results"):
             self.printf(f"SauceNAO搜图结果:\n{json.dumps(results, ensure_ascii=False)}", level="DEBUG")
             msg_list = []
@@ -440,13 +452,13 @@ class Picture(Module):
         api_url = "https://serpapi.com/search"
         params = {
             "engine": "google_lens",
-            "type": "exact_matches",
+            # "type": "exact_matches",
             "hl": "zh-cn",
             "api_key": serpapi_key,
             "url": image_url,
         }
-        resp = httpx.Client(timeout=10, proxy=proxies).get(api_url, params=params)
-        if matches :=resp.json().get("exact_matches"):
+        resp = httpx.get(api_url, params=params, timeout=10, proxy=proxies)
+        if matches :=resp.json().get("visual_matches"):
             self.printf(f"谷歌搜图结果:\n{json.dumps(matches, ensure_ascii=False)}", level="DEBUG")
             msg_list = []
             for _, data in enumerate(matches[:10]):
@@ -477,7 +489,7 @@ class Picture(Module):
         """
         tracemoe_url = "https://api.trace.moe/search?cutBorders&anilistInfo"
         url = f"{tracemoe_url}&url={quote(image_url)}"
-        resp = httpx.Client(timeout=10, proxy=proxies).post(url)
+        resp = httpx.post(url, timeout=10, proxy=proxies)
         resp.raise_for_status()
         data = resp.json()
         if results := data.get("result"):
@@ -503,22 +515,32 @@ class Picture(Module):
         else:
             return "TraceMoe返回无结果~"
 
-    def get_jiandan(self, like: int = 10, raise_error = False) -> str | None:
+    async def get_jiandan(self, raise_error = False) -> str | None:
         """获取一张煎蛋无聊图"""
         try:
             url = "https://jandan.net/api/comment/post/26402?order=desc"
-            resp = httpx.Client(timeout=5).get(url)
+            resp = await httpx.AsyncClient().get(url, timeout=5)
             resp.raise_for_status()
             if data := resp.json().get("data", {}).get("list"):
-                data = [i for i in data if i["vote_positive"] >= like]
                 data = sorted(data, key=lambda x: x["vote_positive"])
-                if len(data) == 0:
-                    return self.printf(f"未获取到最新页满足条件的煎蛋无聊图(like>{like})")
+                data = [i for i in data if i["vote_positive"]>i["vote_negative"]]
                 return data
         except Exception as e:
             if raise_error:
                 raise e
             return self.errorf(f"获取煎蛋无聊图失败 {traceback.format_exc()}")
+
+    def get_img_url(self, url: str) -> str:
+        """获取腾讯图床链接"""
+        try:
+            api_url = f"https://cyapi.top/API/txtc_5.php?url={quote(url)}"
+            resp = httpx.get(api_url, timeout=5)
+            resp.raise_for_status()
+            result = resp.text.rsplit("/", 1)[0]
+            return result or url
+        except Exception:
+            self.errorf(f"获取腾讯图床链接失败 {traceback.format_exc()}")
+            return url
 
     def retry(self, func: Callable[..., Any], name="", max_retries=3, delay=1, failed_ok=False) -> Any:
         """多次尝试执行"""

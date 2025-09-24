@@ -9,7 +9,9 @@ import re
 import sqlite3
 import time
 import traceback
+from urllib.parse import quote
 
+import httpx
 import jieba
 from matplotlib import font_manager as fm
 from matplotlib import pyplot as plt
@@ -43,6 +45,7 @@ class Chat(Module):
             "[QQ账号或昵称]曾说过: | 假装有人说过",
             "刚刚撤回了什么 | 查看上一个撤回消息内容",
             "回复表情图片并@机器人(空内容) | 将表情包转化为链接"
+            "回复消息并发送💩 | 增加💩贴表情"
         ],
         1: [
             "(打开|关闭)词云 | 打开或关闭词云记录(默认关闭)",
@@ -252,16 +255,17 @@ class Chat(Module):
     def sticker_url(self):
         """获取表情链接"""
         msg = self.get_reply()
-        if msg and re.match(r"^\s*\[CQ:image,([^\]]+?)\]\s*$", msg):
-            _, url = re.match(r"^\s*\[CQ:image,.*file=([^,\]]+?),.*url=([^,\]]+?),.*\]\s*$", msg).groups()
-            msg = f"{url}"
-            self.reply(msg)
+        if msg and re.match(r"\[CQ:image.*url=([^,\]]+?),.*\]", msg):
+            url = re.match(r"\[CQ:image.*url=([^,\]]+?),.*\]", msg).group(1)
+            short_url = self.get_img_url(url)
+            if len(short_url) > 100:
+                self.reply_forward(self.node(short_url), source="图片直链")
+            else:
+                self.reply(short_url, reply=True)
             self.success = True
 
-    @via(
-        lambda self: self.at_or_private()
-        and self.au(2)
-        and self.match(r"(\S+?)(又|也|同时)能?被?(称|叫)(为|做)?(\S+)$")
+    @via(lambda self: self.au(2) and self.at_or_private()
+         and self.match(r"(\S+?)(又|也|同时)能?被?(称|叫)(为|做)?(\S+)$")
     )
     def set_label(self):
         """设置称号"""
@@ -300,8 +304,8 @@ class Chat(Module):
             msg += "\n======================="
         self.reply(msg)
 
-    @via(lambda self: self.group_at() and self.au(1)
-         and self.match("一键发电") and self.is_reply())
+    @via(lambda self: self.au(1) and not self.is_private()
+         and self.match(r"^\[CQ:.*\](一键发电|❤️{2,})$") and self.is_reply())
     def praise(self):
         """一键发电"""
         reply_match = self.is_reply()
@@ -310,6 +314,14 @@ class Chat(Module):
         for emoji in emoji_list:
             set_emoji(self.robot, msg_id, emoji)
             time.sleep(0.1)
+
+    @via(lambda self: self.au(2) and not self.is_private()
+         and self.match(r"^\[CQ:.*\](屎|史|💩)$") and self.is_reply())
+    def shit_msg(self):
+        """屎"""
+        reply_match = self.is_reply()
+        msg_id = reply_match.group(1)
+        set_emoji(self.robot, msg_id, 59)
 
     @via(lambda self: self.event.user_id not in self.config[self.owner_id]["users"]
          or self.event.user_name != self.config[self.owner_id]["users"].get(self.event.user_id,{}).get("nickname",""), success=False)
@@ -760,3 +772,16 @@ class Chat(Module):
             msg += f"\n第四名: [CQ:at,qq={user_sorted[3][0]}], 计数{user_sorted[3][1]}次"
             msg += f"\n第五名: [CQ:at,qq={user_sorted[4][0]}], 计数{user_sorted[4][1]}次"
         return msg
+
+    def get_img_url(self, url: str) -> str:
+        """获取腾讯图床链接"""
+        try:
+            api_url = f"https://cyapi.top/API/txtc_5.php?url={quote(url)}"
+            resp = httpx.get(api_url, timeout=5)
+            resp.raise_for_status()
+            result = resp.text.rsplit("/", 1)[0]
+            return result or url
+        except Exception:
+            self.errorf(f"获取腾讯图床链接失败 {traceback.format_exc()}")
+            return url
+

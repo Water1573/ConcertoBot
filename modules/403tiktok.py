@@ -39,7 +39,7 @@ class Tiktok(Module):
             if not self.is_private():
                 set_emoji(self.robot, self.event.msg_id, 124)
             api_url = f"https://api.pearktrue.cn/api/video/douyin/?url={url}"
-            resp = httpx.Client(follow_redirects=True).get(api_url, timeout=5)
+            resp = httpx.get(api_url, timeout=5, follow_redirects=True)
             resp.raise_for_status()
             data = resp.json()
             if data.get("code") != 200:

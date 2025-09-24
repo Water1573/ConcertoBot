@@ -1,11 +1,12 @@
 """机器人基础消息处理模块"""
 
+import os
 import time
 
 from colorama import Fore
 import httpx
 from src.api import del_msg, get_version_info, send_msg
-from src.utils import Module, get_group_name, get_user_name, status_ok, via
+from src.utils import Module, get_group_name, get_user_name, import_json, status_ok, via
 
 
 class Message(Module):
@@ -43,6 +44,16 @@ class Message(Module):
         for mod in self.robot.modules.values():
             if mod.NAME is None or not isinstance(mod.HELP, dict):
                 continue
+            try:
+                config_file = os.path.join(
+                    self.robot.config.data_path,
+                    f"{str(self.ID).lower()}.json"
+                )
+                config = import_json(config_file)
+                if config.get(self.owner_id, {}).get("enable") is False:
+                    continue
+            except Exception:
+                pass
             help_text = ""
             for i in range(4):
                 if auth_level <= i or i == 0:
@@ -233,7 +244,7 @@ class Message(Module):
             url = f"https://api.pearktrue.cn/api/ip/high/?ip={ip}"
             msg = ""
             try:
-                data = httpx.Client().get(url, timeout=3).json()
+                data = httpx.get(url, timeout=3).json()
                 if data.get("code") != 200:
                     msg = f"IP查询返回失败: {data.get("msg")}"
                 else:

@@ -5,7 +5,6 @@ import asyncio
 import base64
 from datetime import datetime, timedelta
 import importlib
-import inspect
 import io
 import logging
 import os
@@ -17,7 +16,7 @@ import json
 import random
 import traceback
 
-from typing import TYPE_CHECKING, Callable, Dict, Optional, Set
+from typing import TYPE_CHECKING, Callable, Coroutine, Dict, Optional, Set, Union
 
 import httpx
 from PIL import Image
@@ -101,10 +100,10 @@ def receive_msg(robot: "Concerto"):
         return rev_json
     except OSError as e:
         robot.errorf(f"端口{robot.config.port}已被占用，程序终止！ {e}")
-        robot.is_running = False
+        robot.isrunning = False
     except socket.gaierror as e:
         robot.errorf(f"绑定地址有误！ {robot.config.host} 不是一个正确的可绑定地址，程序终止！ {e}")
-        robot.is_running = False
+        robot.isrunning = False
     except json.JSONDecodeError as e:
         robot.warnf(f"{body} JSON数据解析失败！ {traceback.format_exc()}")
         return {}
@@ -274,7 +273,7 @@ def msg_img2char(robot: "Concerto", msg: str, show_url = False):
     matches = re.findall(r"(\[CQ:image.*?url=([^,]*).*\])", msg)
     for cq, url in matches:
         try:
-            data = httpx.Client().get(url, timeout=10)
+            data = httpx.get(url, timeout=10)
             img = Image.open(io.BytesIO(data.content)).convert("RGB")
             w, h = img.size
             ratio = h / float(w)
@@ -347,7 +346,7 @@ def get_image_base64(robot : "Concerto", url: str, timeout: str=3, max_retries: 
         return ""
     for attempt in range(max_retries):
         try:
-            response = httpx.Client().get(url, timeout=timeout)
+            response = httpx.get(url, timeout=timeout)
             if response.status_code != 200:
                 raise httpx.HTTPError(response.text)
             return base64.b64encode(response.content).decode("utf-8")
@@ -467,7 +466,7 @@ def reply_id(robot: "Concerto", msg_type: str, uid: str, msg: str, force=False):
     :return: 发送消息后返回的json信息
     """
     msg = handle_placeholder(str(msg), robot.placeholder_dict)
-    simple_msg = re.sub(r"\[CQ:(.*?),file=base64.*\]", r"[CQ:\1,file=Base64]", msg)
+    simple_msg = re.sub(r"\[CQ:(.*?),(file|url)=base64.*\]", r"[CQ:\1,file=Base64]", msg)
     if not robot.config.is_silence or force:
         if msg_type == "group":
             robot.printf(f"{Fore.GREEN}[SEND] {Fore.RESET}向群{Fore.MAGENTA}{get_group_name(robot, uid)}({uid}){Fore.RESET}发送消息：{simple_msg}")
@@ -561,11 +560,12 @@ def send_forward_msg(robot: "Concerto", nodes: list, group_id=None, user_id=None
     if not summary:
         summary = "ConcertBot"
     resp_dict = {"messages": nodes, "source": source, "summary": summary}
+    simple_msg = re.sub(r"\[CQ:(.*?),(file|url)=base64.*\]", r"[CQ:\1,file=Base64]", json.dumps(nodes, ensure_ascii=False))
     if group_id:
-        robot.printf(f"{Fore.GREEN}[SEND] {Fore.RESET}向群{Fore.MAGENTA}{get_group_name(robot, group_id)}({group_id}){Fore.RESET}发送消息：{nodes}")
+        robot.printf(f"{Fore.GREEN}[SEND] {Fore.RESET}向群{Fore.MAGENTA}{get_group_name(robot, group_id)}({group_id}){Fore.RESET}发送消息：{simple_msg}")
         resp_dict["group_id"] = group_id
     elif user_id:
-        robot.printf(f"{Fore.GREEN}[SEND] {Fore.RESET}向{Fore.MAGENTA}{get_user_name(robot, user_id)}({user_id}){Fore.RESET}发送消息：{nodes}")
+        robot.printf(f"{Fore.GREEN}[SEND] {Fore.RESET}向{Fore.MAGENTA}{get_user_name(robot, user_id)}({user_id}){Fore.RESET}发送消息：{simple_msg}")
         resp_dict["user_id"] = user_id
     else:
         return
@@ -918,7 +918,7 @@ def via(condition, success=True):
                     self.printf(f"执行{Fore.YELLOW}[{func.__name__}]{Fore.RESET}方法")
                 try:
                     self.success = success
-                    if inspect.iscoroutinefunction(func):
+                    if asyncio.iscoroutinefunction(func):
                         loop = asyncio.new_event_loop()
                         asyncio.set_event_loop(loop)
                         return loop.run_until_complete(func(self, *args, **kwargs))
@@ -936,28 +936,29 @@ def via(condition, success=True):
     return decorator
 
 class MiniCron:
-    """简单Crontab""" 
-    def __init__(self, expr: str, task: Callable[[], None]) -> None:
+    """简单Crontab，支持同步和异步函数"""
+    
+    def __init__(self, expr: str, task: Union[Callable[[], None], Callable[[], Coroutine]], loop=None) -> None:
         """
         expr: crontab 表达式 (如 "0 8-12/1 * * *" 表示8点到12点每小时执行)
-        task: 要执行的函数，无参数，无返回值
+        task: 要执行的函数，无参数，可以是同步函数或异步函数
         """
         self.expr: str = expr
-        self.task: Callable[[], None] = task
+        self.task: Union[Callable[[], None], Callable[[], Coroutine]] = task
+        self.loop: asyncio.AbstractEventLoop = loop or asyncio.get_event_loop()
         self.cron_fields: Dict[str, Set[int]] = self.parse_cron(expr)
+        self.is_async = asyncio.iscoroutinefunction(task)
+        self.running = False
 
     def parse_field(self, field: str, min_val: int, max_val: int) -> Set[int]:
         """解析单个字段，返回允许的整数集合"""
         if field == "*":
             return set(range(min_val, max_val + 1))
-
         values: Set[int] = set()
-
         # 处理步长表达式 (如 8-12/1)
         if "/" in field:
             range_part, step_part = field.split("/", 1)
             step = int(step_part)
-
             if range_part == "*":
                 # */n 格式
                 values.update(range(min_val, max_val + 1, step))
@@ -979,7 +980,6 @@ class MiniCron:
                     values.update(range(start, end + 1))
                 else:
                     values.add(int(part))
-
         return values
 
     def parse_cron(self, expr: str) -> Dict[str, Set[int]]:
@@ -1012,17 +1012,30 @@ class MiniCron:
             from_time += timedelta(minutes=1)
         raise ValueError("无法找到下一个执行时间, 请检查cron表达式")
 
+    async def execute_task(self) -> None:
+        """执行任务，支持同步和异步函数"""
+        if self.is_async:
+            await self.task()
+        else:
+            result = await self.loop.run_in_executor(None, self.task)
+            if asyncio.iscoroutine(result):
+                await result
+
     async def run(self) -> None:
         """开始循环执行任务"""
+        self.running = True
         next_run: datetime = self.next_time()
-        while True:
+        while self.running:
             now: datetime = datetime.now()
             sleep_seconds = (next_run - now).total_seconds()
             if sleep_seconds > 0:
                 await asyncio.sleep(sleep_seconds)
-            self.task()
-            # 计算下一次执行时间
+            await self.execute_task()
             next_run = self.next_time(datetime.now())
+
+    def stop(self) -> None:
+        """停止任务执行"""
+        self.running = False
 
 class Event:
     """基础事件结构"""  
