@@ -9,9 +9,7 @@ import re
 import sqlite3
 import time
 import traceback
-from urllib.parse import quote
 
-import httpx
 import jieba
 from matplotlib import font_manager as fm
 from matplotlib import pyplot as plt
@@ -22,12 +20,12 @@ from wordcloud import WordCloud
 from src.utils import (
     Module,
     get_error,
+    get_group_name,
     get_stranger_info,
     get_user_name,
     set_emoji,
     status_ok,
-    via,
-    get_msg,
+    via
 )
 
 class Chat(Module):
@@ -38,8 +36,10 @@ class Chat(Module):
     HELP = {
         2: [
             "[时间段]词云 | 生成某一时间段的词云",
+            "[时间段]复读排行 | 生成某一时间段的复读排行",
+            "[时间段]发言排行 | 生成某一时间段的发言排行",
             "为XXX生成[时间段]的词云 | 生成某人某一时间段的词云",
-            "[时间段]复读排行榜 | 生成某一时间段的复读排行榜",
+            "词云配色 [配色代码] | 更改词云配色",
             "[QQ账号或昵称]又叫做[称号] | 记录成员的称号",
             "成员列表 | 查看曾有称号记录在案的成员列表和称号",
             "[QQ账号或昵称]曾说过: | 假装有人说过",
@@ -48,8 +48,7 @@ class Chat(Module):
             "回复消息并发送💩 | 增加💩贴表情"
         ],
         1: [
-            "(打开|关闭)词云 | 打开或关闭词云记录(默认关闭)",
-            "词云配色 [配色代码] | 更改词云配色",
+            "(打开|关闭)词云 | 打开或关闭消息记录(默认关闭)",
             "一键发电 | 对回复的消息进行大量的正面贴表情",
         ],
     }
@@ -59,16 +58,14 @@ class Chat(Module):
         "stopwords": "stopwords.txt",
     }
     CONV_CONFIG = {
-        "wordcloud": {
+        "record": {
             "enable": False,
             "colormap": "Set2"
         },
         "repeat_record": {
             "enable": False
         },
-        "users": {
-            
-        }
+        "users": {}
     }
 
     @via(lambda self: self.at_or_private() and self.au(2) and self.match(r"词云"), success=False)
@@ -77,7 +74,7 @@ class Chat(Module):
         date_pattern = "历史|全部|今天|今日|本日|这天|昨天|昨日|前天|前日|本周|这周|此周|这个?礼拜|这个?星期|上周|上个?礼拜|上个?星期|本月|这月|次月|这个月|上个?月|今年|本年|此年|这一?年|去年|上一?年"
         if self.match(r"(开启|启用|打开|记录|启动|关闭|禁用|取消)"):
             if self.auth <= 1:
-                self.wordcloud_switch()
+                self.record_switch()
                 return
             else:
                 msg = "你没有此操作的权限！"
@@ -85,7 +82,7 @@ class Chat(Module):
             self.wordcloud_colormap()
             return
         elif result := self.match(rf"(给|为)?([^\s]*?)?\s?(生成|的)?({date_pattern})?的?词云"):
-            if self.config[self.owner_id]["wordcloud"]["enable"]:
+            if self.config[self.owner_id]["record"]["enable"]:
                 gen_type = "all"
                 if self.match(r"(今天|今日|本日|这天)"):
                     msg = "正在生成今日词云..."
@@ -125,24 +122,25 @@ class Chat(Module):
                         self.reply(f"未找到关于{user_name}的消息记录")
                         return
                     elif user_name in self.robot.data.keys():
-                        text = self.read_wordcloud(gen_type, user_name)
+                        rows = self.read_chat(gen_type, user_name)
+                        text = "\n".join([r[3] for r in rows if r[3]])
                         msg = msg.replace("正在生成", f"正在生成{user_name}内的")
-                        msg += f"共{len(text.split("\n"))}条..."
-                        self.printf(f"{user_name}词云共{len(text.split("\n"))}条")
+                        msg += f"共{len(text.split("\n"))}条发言..."
                     else:
-                        text = self.read_wordcloud(gen_type, self.owner_id, user_id)
+                        rows = self.read_chat(gen_type, self.owner_id, user_id)
+                        text = "\n".join([r[3] for r in rows if r[3]])
                         user_name = get_user_name(self.robot, user_id)
                         msg = msg.replace("正在生成", f"正在生成{user_name}的")
-                        msg += f"共{len(text.split("\n"))}条..."
-                        self.printf(f"{self.owner_id}{f"内{user_id}的" if user_id else ""}词云共{len(text.split("\n"))}条")
+                        msg += f"共{len(text.split("\n"))}条发言..."
                 else:
-                    text = self.read_wordcloud(gen_type, self.owner_id, user_id)
-                    msg += f"共{len(text.split("\n"))}条..."
-                    self.printf(f"{self.owner_id}{f"内{user_id}的" if user_id else ""}词云共{len(text.split("\n"))}条")
+                    rows = self.read_chat(gen_type, self.owner_id, user_id)
+                    text = "\n".join([r[3] for r in rows if r[3]])
+                    msg += f"共{len(text.split("\n"))}条发言..."
                 if not text:
                     msg = "没有消息记录哦~"
                     self.reply(msg, reply=True)
                     return
+                self.printf(f"{self.owner_id}{f"内{user_id}的" if user_id else ""}发言共{len(text.split("\n"))}条")
                 msg += "请耐心等待..."
                 self.reply(msg, reply=True)
                 set_emoji(self.robot, self.event.msg_id, 60)
@@ -152,10 +150,98 @@ class Chat(Module):
                 except Exception:
                     self.errorf(traceback.format_exc())
                     msg = "词云生成错误！\n" + get_error()
-            elif not self.config[self.owner_id]["wordcloud"]["enable"]:
-                msg = "请先开启开启词云记录哦~"
+            elif not self.config[self.owner_id]["record"]["enable"]:
+                msg = "请先开启开启消息记录哦~"
             else:
-                msg = "没有任何词云记录哦~"
+                msg = "没有任何消息记录哦~"
+        else:
+            return
+        self.success = True
+        self.reply(msg, reply=True)
+
+    @via(lambda self: self.at_or_private() and self.au(2) and self.match(r"(发言|群聊|聊天|消息)(排行|统计)"), success=False)
+    def rank(self):
+        """发言排行"""
+        date_pattern = "历史|全部|今天|今日|本日|这天|昨天|昨日|前天|前日|本周|这周|此周|这个?礼拜|这个?星期|上周|上个?礼拜|上个?星期|本月|这月|次月|这个月|上个?月|今年|本年|此年|这一?年|去年|上一?年"
+        if self.match(r"(开启|启用|打开|记录|启动|关闭|禁用|取消)"):
+            if self.auth <= 1:
+                self.record_switch()
+                return
+            else:
+                msg = "你没有此操作的权限！"
+        elif result := self.match(rf"(给|为)?([^\s]*?)?\s?(生成|的)?({date_pattern})?的?"):
+            if self.config[self.owner_id]["record"]["enable"]:
+                gen_type = "all"
+                if self.match(r"(今天|今日|本日|这天)"):
+                    msg = "正在生成今日发言排行..."
+                    gen_type = "today"
+                elif self.match(r"(昨天|昨日)"):
+                    msg = "正在生成昨天发言排行..."
+                    gen_type = "yesterday"
+                elif self.match(r"(前天|前日)"):
+                    msg = "正在生成前天发言排行..."
+                    gen_type = "before_yesterday"
+                elif self.match(r"(本周|这周|此周|这个?礼拜|这个?星期)"):
+                    msg = "正在生成本周发言排行..."
+                    gen_type = "this_week"
+                elif self.match(r"(上周|上个?礼拜|上个?星期)"):
+                    msg = "正在生成上周发言排行..."
+                    gen_type = "last_week"
+                elif self.match(r"(本月|这月|次月|这个月)"):
+                    msg = "正在生成本月发言排行..."
+                    gen_type = "this_month"
+                elif self.match(r"(上个?月)"):
+                    msg = "正在生成上个月发言排行..."
+                    gen_type = "last_month"
+                elif self.match(r"(今年|本年|此年|这一?年)"):
+                    msg = "正在生成今年发言排行..."
+                    gen_type = "this_year"
+                elif self.match(r"(去年|上一?年)"):
+                    msg = "正在生成去年发言排行..."
+                    gen_type = "last_year"
+                else:
+                    msg = "正在生成历史发言排行..."
+                rows = []
+                user_name = result.group(2)
+                user_id = None
+                if user_name:
+                    user_id = self.get_uid(user_name)
+                    if not user_id and user_name not in self.robot.data.keys():
+                        self.reply(f"未找到关于{user_name}的消息记录")
+                        return
+                    elif user_name in self.robot.data.keys():
+                        rows = self.read_chat(gen_type, user_name)
+                        text = "\n".join([r[3] for r in rows if r[3]])
+                        msg = msg.replace("正在生成", f"正在生成{user_name}内的")
+                        msg += f"共{len(text.split("\n"))}条发言..."
+                    else:
+                        rows = self.read_chat(gen_type, self.owner_id, user_id)
+                        text = "\n".join([r[3] for r in rows if r[3]])
+                        user_name = get_user_name(self.robot, user_id)
+                        msg = msg.replace("正在生成", f"正在生成{user_name}的")
+                        msg += f"共{len(text.split("\n"))}条发言..."
+                else:
+                    rows = self.read_chat(gen_type, self.owner_id, user_id)
+                    text = "\n".join([r[3] for r in rows if r[3]])
+                    msg += f"共{len(text.split("\n"))}条发言..."
+                if len(rows) == 0:
+                    msg = "没有消息记录哦~"
+                    self.reply(msg, reply=True)
+                    return
+                self.printf(f"{self.owner_id}{f"内{user_id}的" if user_id else ""}发言共{len(text.split("\n"))}条")
+                msg += "请耐心等待..."
+                self.reply(msg, reply=True)
+                set_emoji(self.robot, self.event.msg_id, 60)
+                try:
+                    url = self.generate_rank(rows)
+                    msg = f"[CQ:image,file={url}]"
+                except Exception:
+                    self.errorf(traceback.format_exc())
+                    msg = "发言排行生成错误！\n" + get_error()
+            elif not self.config[self.owner_id]["record"]["enable"]:
+                msg = "请先开启开启消息记录哦~"
+            else:
+                msg = "没有任何消息记录哦~"
         else:
             return
         self.success = True
@@ -257,11 +343,10 @@ class Chat(Module):
         msg = self.get_reply()
         if msg and re.match(r"\[CQ:image.*url=([^,\]]+?),.*\]", msg):
             url = re.match(r"\[CQ:image.*url=([^,\]]+?),.*\]", msg).group(1)
-            short_url = self.get_img_url(url)
-            if len(short_url) > 100:
-                self.reply_forward(self.node(short_url), source="图片直链")
+            if len(url) > 100:
+                self.reply_forward(self.node(url), source="图片直链")
             else:
-                self.reply(short_url, reply=True)
+                self.reply(url, reply=True)
             self.success = True
 
     @via(lambda self: self.au(2) and self.at_or_private()
@@ -305,7 +390,7 @@ class Chat(Module):
         self.reply(msg)
 
     @via(lambda self: self.au(1) and not self.is_private()
-         and self.match(r"^\[CQ:.*\](一键发电|❤️{2,})$") and self.is_reply())
+         and self.match(r"^\[CQ:.*\]?(一键发电|❤️\s?)+$") and self.is_reply())
     def praise(self):
         """一键发电"""
         reply_match = self.is_reply()
@@ -329,12 +414,12 @@ class Chat(Module):
         """用户记录"""
         self.record_user(self.event.user_id, self.event.user_name)
 
-    @via(lambda self: self.config[self.owner_id]["wordcloud"]["enable"], success=False)
+    @via(lambda self: self.config[self.owner_id]["record"]["enable"], success=False)
     def z_record_msg(self):
         """聊天消息记录"""
         msg = re.sub(r"(\[|【|{)[\s\S]*(\]|】|})", "", self.event.msg)
         msg = re.sub(r"http[s]?://\S+", "", msg)
-        self.store_wordcloud(
+        self.store_chat(
             self.owner_id,
             self.event.user_id,
             msg,
@@ -374,15 +459,15 @@ class Chat(Module):
             return name
         return 0
 
-    def init_wordcloud_db(self, conn: sqlite3.Connection):
-        """确保 wordcloud 表存在。表结构：
+    def init_chat_db(self, conn: sqlite3.Connection):
+        """确保 chat 表存在。表结构：
         id, owner_id, user_id, user_name, message, timestamp
         timestamp 为整型 Unix 时间戳（秒）。
         """
         cur = conn.cursor()
         cur.execute(
             """
-            CREATE TABLE IF NOT EXISTS wordcloud (
+            CREATE TABLE IF NOT EXISTS chat (
                 owner_id TEXT NOT NULL,
                 user_id TEXT NOT NULL,
                 date TEXT NOT NULL,                -- YYYYMMDD
@@ -394,7 +479,7 @@ class Chat(Module):
         )
         conn.commit()
 
-    def store_wordcloud(self, owner_id: str, user_id: str, text: str, ts = None):
+    def store_chat(self, owner_id: str, user_id: str, text: str, ts = None):
         """
         将单条聊天记录按 (owner_id, user_id, date) 合并写入数据库
         """
@@ -406,22 +491,22 @@ class Chat(Module):
             date = ts.strftime("%Y%m%d")
             db = self.get_data_path(self.config["database"])
             conn = sqlite3.connect(db)
-            self.init_wordcloud_db(conn)
+            self.init_chat_db(conn)
             cur = conn.cursor()
             cur.execute(
-                "SELECT text FROM wordcloud WHERE owner_id=? AND user_id=? AND date=?",
+                "SELECT text FROM chat WHERE owner_id=? AND user_id=? AND date=?",
                 (owner_id, user_id, date),
             )
             row = cur.fetchone()
             if row and row[0]:
                 new_text = row[0] + "\n" + text
                 cur.execute(
-                    "UPDATE wordcloud SET text=?, update_ts=? WHERE owner_id=? AND user_id=? AND date=?",
+                    "UPDATE chat SET text=?, update_ts=? WHERE owner_id=? AND user_id=? AND date=?",
                     (new_text, ts.isoformat(), owner_id, user_id, date),
                 )
             else:
                 cur.execute(
-                    "INSERT OR REPLACE INTO wordcloud(owner_id, user_id, date, text, update_ts) VALUES (?, ?, ?, ?, ?)",
+                    "INSERT OR REPLACE INTO chat(owner_id, user_id, date, text, update_ts) VALUES (?, ?, ?, ?, ?)",
                     (owner_id, user_id, date, text, ts.isoformat()),
                 )
             conn.commit()
@@ -429,16 +514,16 @@ class Chat(Module):
         except Exception:
             self.errorf("保存消息记录失败:\n" + traceback.format_exc())
 
-    def read_wordcloud(self, gen_type: str, owner_id: str, user_id: str = None):
+    def read_chat(self, gen_type: str, owner_id: str, user_id: str = None):
         """读取当前会话下的所有消息并拼接为字符串返回
         gen_type 可选：today, yesterday, before_yesterday, this_week,
         last_week, this_month, last_month, this_year, last_year, all
         """
         try:
-            wordcloud_db = self.get_data_path(self.config["database"])
+            chat_db = self.get_data_path(self.config["database"])
             date_range = self.get_date_range(gen_type)
 
-            query = "SELECT text FROM wordcloud"
+            query = "SELECT owner_id, user_id, date, text FROM chat"
             conditions = ["owner_id=?"]
             params = [owner_id]
 
@@ -456,15 +541,14 @@ class Chat(Module):
             where_clause = " WHERE " + " AND ".join(conditions)
             query = f"{query}{where_clause} ORDER BY date ASC"
 
-            with sqlite3.connect(wordcloud_db) as conn:
-                self.init_wordcloud_db(conn)
+            with sqlite3.connect(chat_db) as conn:
+                self.init_chat_db(conn)
                 cur = conn.cursor()
                 cur.execute(query, params)
                 rows = cur.fetchall()
             if not rows:
-                return ""
-            texts = [r[0] for r in rows if r[0]]
-            return "\n".join(texts)
+                return []
+            return rows
         except Exception:
             self.errorf(traceback.format_exc())
             return ""
@@ -507,6 +591,22 @@ class Chat(Module):
             return None, None
         return s, e
 
+    def get_font(self) -> str:
+        """获取字体路径"""
+        font_path = self.get_data_path(self.config["font"])
+        if not os.path.exists(font_path):
+            font_path = ""
+            candidates = ["SimHei", "SimSun", "Microsoft YaHei", "STHeiti",
+                          "Songti", "NotoSansCJK", "PingFang"]
+            for font in sorted(fm.findSystemFonts()):
+                for name in candidates:
+                    if name.lower() in font.lower():
+                        font_path = font
+                        break
+                if font_path:
+                    break
+        return font_path
+
     def generate_wordcloud(self, text: str):
         """生成词云图片并返回 base64 URI(base64://...)"""
 
@@ -544,23 +644,12 @@ class Chat(Module):
         }
         
         # 主题
-        colormap = self.config[self.owner_id]["wordcloud"]["colormap"]
+        colormap = self.config[self.owner_id]["record"]["colormap"]
         if colormap:
             wc_kwargs["colormap"] = colormap
 
         # 字体
-        font_path = self.get_data_path(self.config["font"])
-        if not os.path.exists(font_path):
-            font_path = ""
-            candidates = ["SimHei", "SimSun", "Microsoft YaHei", "STHeiti",
-                          "Songti", "NotoSansCJK", "PingFang"]
-            for font in sorted(fm.findSystemFonts()):
-                for name in candidates:
-                    if name.lower() in font.lower():
-                        font_path = font
-                        break
-                if font_path:
-                    break
+        font_path = self.get_font()
         if font_path:
             wc_kwargs["font_path"] = font_path
             self.printf(f"词云字体: {font_path}")
@@ -582,15 +671,108 @@ class Chat(Module):
         img_base64 = base64.b64encode(buf.read()).decode("utf-8")
         return f"base64://{img_base64}"
 
-    def wordcloud_switch(self):
-        """打开或关闭词云"""
+    def generate_rank(self, data: list):
+        """生成发言排行图片并返回 base64 URI(base64://...)"""
+
+        groups = set(row[0] for row in data)
+        users = set(row[1] for row in data)
+        dates = set(row[2] for row in data)
+
+        font = fm.FontProperties(fname=self.get_font())
+        fm.fontManager.addfont(self.get_font())
+        plt.rcParams['font.family'] = font.get_name()
+        plt.figure(figsize=(19.2, 10.8))
+
+        # 场景1：单群多用户（一个群，多个用户）
+        if len(users) > 1:
+            group_id = next(iter(groups))[1:]
+            group_name = get_group_name(self.robot, group_id)
+            # 统计每个用户的累计发言条数（所有日期）
+            counts = {}
+            for _, user_id, _, messages in data:
+                count = len([m for m in messages.splitlines() if m.strip() != ""])
+                counts[user_id] = counts.get(user_id, 0) + count
+
+            # 按发言条数降序排序
+            sorted_dates = sorted(dates, key=lambda x: datetime.datetime.strptime(str(x), '%Y%m%d'))
+            sorted_users = sorted(counts.items(), key=lambda x: x[1], reverse=True)
+            users_sorted = [get_user_name(self.robot, u) for u, _ in sorted_users]
+            counts_sorted = [c for _, c in sorted_users]
+
+            # 绘制水平柱状图
+            plt.bar(users_sorted, counts_sorted, color="#87CEEB")
+            plt.ylabel("累计发言条数")
+            sdate = datetime.datetime.strptime(sorted_dates[0], '%Y%m%d').strftime('%Y-%m-%d')
+            edate = datetime.datetime.strptime(sorted_dates[-1], '%Y%m%d').strftime('%Y-%m-%d')
+            title = f"群 {group_name} 累计发言统计({sdate}至{edate} 共{len(dates)}天)"
+            plt.title(title)
+            for i, v in enumerate(counts_sorted):
+                plt.text(v + 0.5, i, str(v), ha='center')
+
+        # 场景2：单用户多日期（一个用户，多天数据）
+        elif len(dates) > 1:
+            user_id = next(iter(users))
+            user_name = get_user_name(self.robot, user_id)
+            # 统计每个日期的发言条数
+            counts_by_date = {}
+            for _, uid, msg_date, messages in data:
+                if uid == user_id:
+                    count = len([m for m in messages.splitlines() if m.strip() != ""])
+                    counts_by_date[msg_date] = counts_by_date.get(msg_date, 0) + count
+            # 按日期升序排序
+            sorted_dates = sorted(counts_by_date.keys(), key=lambda x: datetime.datetime.strptime(str(x), '%Y%m%d'))
+            values = [counts_by_date[dt] for dt in sorted_dates]
+            # 转换为日期格式用于绘图
+            x = [datetime.datetime.strptime(str(dt), '%Y%m%d') for dt in sorted_dates]
+            # 绘制折线图（日期 vs 发言条数）
+            plt.plot(x, values, marker='o', color="#87CEEB")
+            plt.xlabel("日期")
+            plt.ylabel("发言条数")
+            sdate = datetime.datetime.strptime(sorted_dates[0], '%Y%m%d').strftime('%Y-%m-%d')
+            edate = datetime.datetime.strptime(sorted_dates[-1], '%Y%m%d').strftime('%Y-%m-%d')
+            title = f"用户 {user_name} 每日发言频率 ({sdate} 至 {edate})"
+            plt.title(title)
+            plt.xticks(rotation=45)
+
+        # 场景3：单用户单日期（一个用户，一天数据）
+        elif len(users) == 1 and len(dates) == 1:
+            user_id = next(iter(users))
+            user_name = get_user_name(self.robot, user_id)
+            date = next(iter(dates))
+            # 统计该用户该日的发言条数
+            total_messages = 0
+            for _, uid, msg_date, messages in data:
+                if uid == user_id and msg_date == date:
+                    total_messages += len([m for m in messages.splitlines() if m.strip() != ""])
+            # 绘制单条柱状图
+            plt.bar([0], [total_messages], width=0.4, color="#87CEEB")
+            plt.ylabel("发言条数")
+            plt.xticks([0], [f"用户 {user_name}"])
+            data_date = datetime.datetime.strptime(str(date), '%Y%m%d').strftime('%Y-%m-%d')
+            title = f"用户 {user_name} 于 {data_date} 的发言统计"
+            plt.title(title)
+            # 在柱状图顶部标注数值
+            plt.text(0, total_messages + 0.5, str(total_messages), ha='center')
+        else:
+            raise ValueError("不支持这种统计方式")
+
+        plt.tight_layout()
+        buf = io.BytesIO()
+        plt.savefig(buf, format="png")
+        plt.close()
+        buf.seek(0)
+        img_base64 = base64.b64encode(buf.read()).decode("utf-8")
+        return f"base64://{img_base64}"
+
+    def record_switch(self):
+        """打开或关闭消息记录"""
         msg = ""
         if self.match(r"(开启|启用|打开|记录|启动)"):
-            self.config[self.owner_id]["wordcloud"]["enable"] = True
-            msg = "词云记录已开启"
+            self.config[self.owner_id]["record"]["enable"] = True
+            msg = "消息记录已开启"
         elif self.match(r"(关闭|禁用|取消)"):
-            self.config[self.owner_id]["wordcloud"]["enable"] = False
-            msg = "词云记录已关闭"
+            self.config[self.owner_id]["record"]["enable"] = False
+            msg = "消息记录已关闭"
         self.save_config()
         self.reply(msg)
 
@@ -598,7 +780,7 @@ class Chat(Module):
         """更改词云配色"""
         if self.match(r"#(\S+)"):
             colormap = self.match(r"#(\S+)").group(1)
-            self.config[self.owner_id]["wordcloud"]["colormap"] = colormap
+            self.config[self.owner_id]["record"]["colormap"] = colormap
             self.save_config()
             msg = "词云配色设置成功！"
         else:
@@ -772,16 +954,3 @@ class Chat(Module):
             msg += f"\n第四名: [CQ:at,qq={user_sorted[3][0]}], 计数{user_sorted[3][1]}次"
             msg += f"\n第五名: [CQ:at,qq={user_sorted[4][0]}], 计数{user_sorted[4][1]}次"
         return msg
-
-    def get_img_url(self, url: str) -> str:
-        """获取腾讯图床链接"""
-        try:
-            api_url = f"https://cyapi.top/API/txtc_5.php?url={quote(url)}"
-            resp = httpx.get(api_url, timeout=5)
-            resp.raise_for_status()
-            result = resp.text.rsplit("/", 1)[0]
-            return result or url
-        except Exception:
-            self.errorf(f"获取腾讯图床链接失败 {traceback.format_exc()}")
-            return url
-

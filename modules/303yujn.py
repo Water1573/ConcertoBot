@@ -41,20 +41,23 @@ class YUJN(Module):
     YUJN_URL = "https://api.yujn.cn"
     # 视频类API
     URL_MAP = {
+        # 图片类API
+        "写真": f"https://cyapi.top/API/wdxz.php",
+        # 视频类API
         "小姐姐": f"{YUJN_URL}/api/xjj.php?type=video",
         "黑丝": f"{YUJN_URL}/api/heisis.php?type=video",
         "白丝": f"{YUJN_URL}/api/baisis.php?type=video",
         "欲梦": f"{YUJN_URL}/api/ndym.php?type=video",
         "甜妹": f"{YUJN_URL}/api/tianmei.php?type=video",
         "双倍快乐": f"{YUJN_URL}/api/sbkl.php?type=video",
-        "纯情女高": f"{YUJN_URL}/api/nvgao.php?type=video",
+        "女高": f"{YUJN_URL}/api/nvgao.php?type=video",
         "萝莉": f"{YUJN_URL}/api/luoli.php?type=video",
         "玉足": f"{YUJN_URL}/api/yuzu.php?type=video",
         "帅哥": f"{YUJN_URL}/api/xgg.php?type=video",
         "热舞": f"{YUJN_URL}/api/rewu.php?type=video",
         "吊带": f"{YUJN_URL}/api/diaodai.php?type=video",
         "汉服": f"{YUJN_URL}/api/hanfu.php?type=video",
-        "极品狱卒": f"{YUJN_URL}/api/jpmt.php?type=video",
+        "狱卒": f"{YUJN_URL}/api/jpmt.php?type=video",
         "清纯": f"{YUJN_URL}/api/qingchun.php?type=video",
         "快手变装": f"{YUJN_URL}/api/ksbianzhuang.php?type=video",
         "抖音变装": f"{YUJN_URL}/api/bianzhuang.php?type=video",
@@ -62,10 +65,11 @@ class YUJN(Module):
         "穿搭": f"{YUJN_URL}/api/chuanda.php?type=video",
         "身材": f"{YUJN_URL}/api/wmsc.php?type=video",
         # 语音类API
-        "撒娇": f"{YUJN_URL}/api/yujie.php",
+        "御姐": f"{YUJN_URL}/api/yujie.php",
         "绿茶": f"{YUJN_URL}/api/lvcha.php",
         "怼人": f"{YUJN_URL}/api/duiren.php",
     }
+    PICTURE_PATTERN = "(写真)"
     VIDEO_PATTERN = "(小姐姐|黑丝|白丝|欲梦|甜妹|双倍快乐|女高|萝莉|玉足|帅哥|热舞|吊带|汉服|狱卒|清纯|快手变装|抖音变装|萌娃|穿搭|身材)"
     VOICE_PATTERN = "(御姐|绿茶|怼人)"
 
@@ -85,12 +89,30 @@ class YUJN(Module):
         """概率触发遇见API"""
         try:
             func = random.choice(self.config[self.owner_id].get("active_func", []))
-            video_url = self.URL_MAP[func]
-            resp = httpx.get(video_url, timeout=5)
-            if resp.status_code != 302:
-                return
-            location = resp.headers.get("location")
-            self.reply(f"[CQ:video,file={location}]")
+            api_url = self.URL_MAP[func]
+            def api_req():
+                resp = httpx.get(api_url, timeout=5, follow_redirects=True)
+                resp.raise_for_status()
+                data = base64.b64encode(resp.content).decode("utf-8")
+                return f"base64://{data}"
+            data = self.retry(api_req)
+            self.reply(f"[CQ:video,file={data}]")
+        except Exception as e:
+            self.errorf(traceback.format_exc())
+            self.errorf(f"遇见API请求失败: {e}")
+
+    @via(lambda self: self.au(2)
+         and self.match(rf"^(来|发)(点|只|张|个|位){self.PICTURE_PATTERN}$"))
+    def picture_handler(self):
+        """图片类功能处理"""
+        try:
+            if not self.is_private():
+                set_emoji(self.robot, self.event.msg_id, 124)
+            cmd = self.match(self.PICTURE_PATTERN).group(1)
+            if cmd not in self.URL_MAP:
+                return self.reply(f"未知命令: {cmd}")
+            api_url = self.URL_MAP[cmd]
+            return self.reply(f"[CQ:image,file={api_url}]")
         except Exception as e:
             self.errorf(traceback.format_exc())
             self.errorf(f"遇见API请求失败: {e}")
@@ -106,12 +128,12 @@ class YUJN(Module):
             if cmd not in self.URL_MAP:
                 return self.reply(f"未知命令: {cmd}")
             video_url = self.URL_MAP[cmd]
-            def _():
+            def api_req():
                 resp = httpx.get(video_url, timeout=5, follow_redirects=True)
                 resp.raise_for_status()
                 data = base64.b64encode(resp.content).decode("utf-8")
                 return f"base64://{data}"
-            data = self.retry(_())
+            data = self.retry(api_req)
             result = self.reply(f"[CQ:video,file={data}]")
             if not status_ok(result):
                 self.reply("视频失效了~请再试一次吧~")
@@ -130,13 +152,13 @@ class YUJN(Module):
             if cmd not in self.URL_MAP:
                 return self.reply(f"未知命令: {cmd}")
             voice_url = self.URL_MAP[cmd]
-            def _():
+            def api_req():
                 resp = httpx.get(voice_url, timeout=5, follow_redirects=True)
                 resp.raise_for_status()
                 data = base64.b64encode(resp.content).decode("utf-8")
                 return f"base64://{data}"
-            data = self.retry(_())
-            self.reply(f"[CQ:voice,file={data}]")
+            data = self.retry(api_req)
+            self.reply(f"[CQ:record,file={data}]")
         except Exception as e:
             self.errorf(traceback.format_exc())
             self.errorf(f"遇见API请求失败: {e}")

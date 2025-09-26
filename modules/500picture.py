@@ -2,6 +2,7 @@
 
 import asyncio
 import base64
+import html
 import io
 import json
 import random
@@ -14,7 +15,7 @@ from urllib.parse import quote
 import httpx
 from PIL import Image
 
-from src.utils import MiniCron, Module, calc_time, reply_back, set_emoji, via
+from src.utils import MiniCron, Module, calc_time, get_msg, reply_back, send_msg, set_emoji, status_ok, via
 
 class Picture(Module):
     """图片处理模块"""
@@ -93,6 +94,7 @@ class Picture(Module):
         config["hist"] = config["hist"][-10:]
         self.save_config()
         msg = data.get("content").strip()
+        msg = msg.replace("/mw600/", "/large/").replace("/thumb180/", "/large/")
         msg = re.sub(r"""<img\s+src="([^"]+)"\s*/?>""", r"[CQ:image,file=\1]", msg)
         reply_back(self.robot, owner, msg)
 
@@ -103,7 +105,7 @@ class Picture(Module):
         if not self.is_private():
             set_emoji(self.robot, self.event.msg_id, 124)
         config = self.config[self.owner_id]["jiandan"]
-        data_list = self.get_jiandan()
+        data_list = self.robot.sync(self.get_jiandan())
         if not data_list:
             return self.reply("未获取到任何有效数据")
         data = None
@@ -166,13 +168,13 @@ class Picture(Module):
             return self.reply("解析API响应失败", reply=True)
 
     @via(lambda self: self.au(2) and self.at_or_private()
-         and self.match(r"^(更|超|超级|很|再|无敌){0,2}?(来|发|看|给|瑟|涩|色|se)\S{0,5}(图|瑟|涩|色|se|好看|好康|可爱)的?"))
+         and self.match(r"^我?(要|来|发|看|给|有没有){0,2}?(更|超|超级|很|再|无敌|最强){0,3}?(来|发|看|给|瑟|涩|色|se)\S{0,5}(图|瑟|涩|色|se|好看|好康|可爱)的?"))
     def lolicon(self):
         tags = []
         r18_mode = 0
         if len(self.event.text.split(" ")) > 1:
             tags = self.event.text.split(" ")[1:]
-        if self.match(r"(更|超|超级|很|再|无敌)"):
+        if self.match(r"(更|超|超级|很|再|无敌|最强)"):
             r18_mode = 1
         try:
             url = ""
@@ -187,14 +189,14 @@ class Picture(Module):
                 url = data.get("urls", {}).get("original")
                 url = self.get_img_url(url)
                 if data["r18"]:
-                    msg = f"来自画师{author}的作品: {title}\n(NSFW图片仅发送URL)\n{url}"
+                    msg = f"来自画师{author}的作品: {title}\n{url}"
+                    self.reply_forward([self.node("NSFW"), self.node(msg)], data["title"], "Pixiv")
                 else:
                     msg = f"来自画师{author}的作品: {title}\n{url}"
+                    self.reply_forward(self.node(msg), data["title"], "Pixiv")
+                    self.reply(f"[CQ:image,file={url}]")
             else:
-                msg = "未找到该标签的图片"
-            self.reply(msg)
-            if not data["r18"]:
-                self.reply(f"[CQ:image,file={url}]")
+                return self.reply("未找到该标签的图片")
         except Exception as e:
             self.errorf(traceback.format_exc())
             self.reply(f"Lolicon API调用失败! {e}", reply=True)
@@ -515,29 +517,47 @@ class Picture(Module):
         else:
             return "TraceMoe返回无结果~"
 
-    async def get_jiandan(self, raise_error = False) -> str | None:
+    async def get_jiandan(self, page=0, page_num=3, raise_error = False) -> str | None:
         """获取一张煎蛋无聊图"""
         try:
-            url = "https://jandan.net/api/comment/post/26402?order=desc"
-            resp = await httpx.AsyncClient().get(url, timeout=5)
+            url = f"https://jandan.net/api/comment/post/26402?order=desc?page={page}"
+            self.printf(f"获取煎蛋无聊图{f"第{page}页" if page else f"最新一页"}数据")
+            resp = await httpx.AsyncClient().get(url, timeout=3)
             resp.raise_for_status()
-            if data := resp.json().get("data", {}).get("list"):
-                data = sorted(data, key=lambda x: x["vote_positive"])
-                data = [i for i in data if i["vote_positive"]>i["vote_negative"]]
+            data = resp.json().get("data", {}).get("list")
+            current_page = resp.json().get("data", {}).get("current_page", 0)
+            if not data:
+                return []
+            if page != 0:
                 return data
+            if page == 0 and page_num > 0:
+                for i in range(1, page_num + 1):
+                    data += await self.get_jiandan(current_page - i)
+            data = sorted(data, key=lambda x: x["vote_positive"]-x["vote_negative"])
+            data = [i for i in data if i["vote_positive"]>i["vote_negative"] and i["vote_positive"] > 0]
+            self.printf(f"共请求到{len(data)}条有效的帖子")
+            return data
         except Exception as e:
+            self.errorf(f"获取煎蛋无聊图失败 {traceback.format_exc()}")
             if raise_error:
                 raise e
-            return self.errorf(f"获取煎蛋无聊图失败 {traceback.format_exc()}")
+            return []
 
     def get_img_url(self, url: str) -> str:
-        """获取腾讯图床链接"""
+        """获取QQ链接"""
         try:
-            api_url = f"https://cyapi.top/API/txtc_5.php?url={quote(url)}"
-            resp = httpx.get(api_url, timeout=5)
-            resp.raise_for_status()
-            result = resp.text.rsplit("/", 1)[0]
-            return result or url
+            self.printf(f"获取QQ图片链接...url={url}")
+            result = send_msg(self.robot, "private", self.robot.self_id, f"[CQ:image,file={url}]")
+            if not status_ok(result):
+                return url
+            msg_id = result.get("data").get("message_id")
+            result = get_msg(self.robot, msg_id)
+            if not status_ok(result):
+                return url
+            msg =  html.unescape(result.get("data").get("message"))
+            if match := re.search(r"\[CQ:image,.*url=([^,\]]+?),.*\]", msg):
+                url = match.group(1)
+            return url
         except Exception:
             self.errorf(f"获取腾讯图床链接失败 {traceback.format_exc()}")
             return url

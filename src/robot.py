@@ -6,13 +6,13 @@ import json
 import logging
 import os
 import random
-import re
 import sys
 import time
 import threading
 import traceback
 
 from collections import deque
+from typing import Any, Callable
 from colorama import Fore
 import httpx
 
@@ -367,6 +367,11 @@ class Concerto:
         else:
             self.modules[module.ID] = module
             self.printf(f"{Fore.CYAN}[{module.ID}] {Fore.RESET}{module.NAME}({module_file})已接入！")
+
+    def sync(self, func: Callable) -> Any:
+        future = asyncio.run_coroutine_threadsafe(func, self.loop)
+        result = future.result()
+        return result
 
     def printf(self, msg, end="\n", console=True, flush=False, level="INFO"):
         """

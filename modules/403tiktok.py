@@ -2,6 +2,7 @@
 
 import re
 import traceback
+from urllib.parse import quote
 
 import httpx
 
@@ -38,8 +39,8 @@ class Tiktok(Module):
         try:
             if not self.is_private():
                 set_emoji(self.robot, self.event.msg_id, 124)
-            api_url = f"https://api.pearktrue.cn/api/video/douyin/?url={url}"
-            resp = httpx.get(api_url, timeout=5, follow_redirects=True)
+            api_url = f"https://api.pearktrue.cn/api/video/douyin/?url={quote(url)}"
+            resp = httpx.get(api_url, timeout=10, follow_redirects=True)
             resp.raise_for_status()
             data = resp.json()
             if data.get("code") != 200:
@@ -49,6 +50,6 @@ class Tiktok(Module):
                 set_emoji(self.robot, self.event.msg_id, 66)
             msg = f"[CQ:video,file={data["data"]["url"]}]"
             self.reply(msg)
-        except Exception:
-            nodes = self.node(f"{traceback.format_exc()}")
-            return self.reply_forward(nodes, source="抖音视频处理失败")
+        except Exception as e:
+            self.errorf(traceback.format_exc())
+            return self.reply_forward(self.node(f"{e}"), source="抖音视频处理失败")
