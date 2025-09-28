@@ -125,7 +125,7 @@ class Concerto:
             rev = receive_msg(self)
             threading.Thread(target=self.handle_msg, args=(rev,), daemon=True).start()
 
-    def handle_msg(self, rev):
+    def handle_msg(self, rev: dict):
         """消息处理接口主函数"""
 
         if not rev or rev == {}:
@@ -165,7 +165,7 @@ class Concerto:
         if user_id in self.config.blacklist:
             pass
         elif event.post_type == "message":
-            data.past_message.append(rev)
+            data.past_message.append(rev.copy())
             if str(user_id) in self.config.admin_list:
                 return self.message(event, 1)
             elif group_id:

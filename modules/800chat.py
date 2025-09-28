@@ -60,7 +60,7 @@ class Chat(Module):
     CONV_CONFIG = {
         "record": {
             "enable": False,
-            "colormap": "Set2"
+            "colormap": "Set3"
         },
         "repeat_record": {
             "enable": False
@@ -349,9 +349,7 @@ class Chat(Module):
                 self.reply(url, reply=True)
             self.success = True
 
-    @via(lambda self: self.au(2) and self.at_or_private()
-         and self.match(r"(\S+?)(又|也|同时)能?被?(称|叫)(为|做)?(\S+)$")
-    )
+    @via(lambda self: self.au(2) and self.at_or_private() and self.match(r"(\S+?)(又|也|同时)能?被?(称|叫)(为|做)?(\S+)$"))
     def set_label(self):
         """设置称号"""
         inputs = self.match(r"(\S+?)(又|也|同时)能?被?(称|叫)(为|做)?(\S+)").groups()
@@ -389,8 +387,7 @@ class Chat(Module):
             msg += "\n======================="
         self.reply(msg)
 
-    @via(lambda self: self.au(1) and not self.is_private()
-         and self.match(r"^\[CQ:.*\]?(一键发电|❤️\s?)+$") and self.is_reply())
+    @via(lambda self: self.au(1) and not self.is_private() and self.match(r"^\[CQ:.*\]?(一键发电|❤️\s?)+$") and self.is_reply())
     def praise(self):
         """一键发电"""
         reply_match = self.is_reply()
@@ -400,8 +397,7 @@ class Chat(Module):
             set_emoji(self.robot, msg_id, emoji)
             time.sleep(0.1)
 
-    @via(lambda self: self.au(2) and not self.is_private()
-         and self.match(r"^\[CQ:.*\](屎|史|💩)$") and self.is_reply())
+    @via(lambda self: self.au(2) and not self.is_private() and self.match(r"^\[CQ:.*\](屎|史|💩)$") and self.is_reply())
     def shit_msg(self):
         """屎"""
         reply_match = self.is_reply()
@@ -678,9 +674,11 @@ class Chat(Module):
         users = set(row[1] for row in data)
         dates = set(row[2] for row in data)
 
+        colormap = self.config[self.owner_id]["record"]["colormap"]
         font = fm.FontProperties(fname=self.get_font())
         fm.fontManager.addfont(self.get_font())
-        plt.rcParams['font.family'] = font.get_name()
+        plt.rcParams["font.family"] = font.get_name()
+        plt.rcParams['font.size'] = 18
         plt.figure(figsize=(19.2, 10.8))
 
         # 场景1：单群多用户（一个群，多个用户）
@@ -693,21 +691,24 @@ class Chat(Module):
                 count = len([m for m in messages.splitlines() if m.strip() != ""])
                 counts[user_id] = counts.get(user_id, 0) + count
 
-            # 按发言条数降序排序
-            sorted_dates = sorted(dates, key=lambda x: datetime.datetime.strptime(str(x), '%Y%m%d'))
-            sorted_users = sorted(counts.items(), key=lambda x: x[1], reverse=True)
+            sorted_dates = sorted(dates, key=lambda x: datetime.datetime.strptime(str(x), "%Y%m%d"))
+            sorted_users = sorted(counts.items(), key=lambda x: x[1])
             users_sorted = [get_user_name(self.robot, u) for u, _ in sorted_users]
             counts_sorted = [c for _, c in sorted_users]
 
             # 绘制水平柱状图
-            plt.bar(users_sorted, counts_sorted, color="#87CEEB")
-            plt.ylabel("累计发言条数")
-            sdate = datetime.datetime.strptime(sorted_dates[0], '%Y%m%d').strftime('%Y-%m-%d')
-            edate = datetime.datetime.strptime(sorted_dates[-1], '%Y%m%d').strftime('%Y-%m-%d')
+            colors = plt.get_cmap(colormap)(np.linspace(0, 1, len(users)))
+            plt.barh(users_sorted, counts_sorted, color=colors)
+            if len(dates) < 180:
+                sdate = datetime.datetime.strptime(sorted_dates[0], "%Y%m%d").strftime("%m月%d日")
+                edate = datetime.datetime.strptime(sorted_dates[-1], "%Y%m%d").strftime("%m月%d日")
+            else:
+                sdate = datetime.datetime.strptime(sorted_dates[0], "%Y%m%d").strftime("%Y年%m月%d日")
+                edate = datetime.datetime.strptime(sorted_dates[-1], "%Y%m%d").strftime("%Y年%m月%d日")
             title = f"群 {group_name} 累计发言统计({sdate}至{edate} 共{len(dates)}天)"
             plt.title(title)
             for i, v in enumerate(counts_sorted):
-                plt.text(v + 0.5, i, str(v), ha='center')
+                plt.text(v + len(str(v)), i, str(v), ha="center")
 
         # 场景2：单用户多日期（一个用户，多天数据）
         elif len(dates) > 1:
@@ -720,16 +721,15 @@ class Chat(Module):
                     count = len([m for m in messages.splitlines() if m.strip() != ""])
                     counts_by_date[msg_date] = counts_by_date.get(msg_date, 0) + count
             # 按日期升序排序
-            sorted_dates = sorted(counts_by_date.keys(), key=lambda x: datetime.datetime.strptime(str(x), '%Y%m%d'))
+            sorted_dates = sorted(counts_by_date.keys(), key=lambda x: datetime.datetime.strptime(str(x), "%Y%m%d"))
             values = [counts_by_date[dt] for dt in sorted_dates]
             # 转换为日期格式用于绘图
-            x = [datetime.datetime.strptime(str(dt), '%Y%m%d') for dt in sorted_dates]
+            x = [datetime.datetime.strptime(str(dt), "%Y%m%d") for dt in sorted_dates]
             # 绘制折线图（日期 vs 发言条数）
-            plt.plot(x, values, marker='o', color="#87CEEB")
-            plt.xlabel("日期")
+            plt.plot(x, values, marker="o", color="#000000")
             plt.ylabel("发言条数")
-            sdate = datetime.datetime.strptime(sorted_dates[0], '%Y%m%d').strftime('%Y-%m-%d')
-            edate = datetime.datetime.strptime(sorted_dates[-1], '%Y%m%d').strftime('%Y-%m-%d')
+            sdate = datetime.datetime.strptime(sorted_dates[0], "%Y%m%d").strftime("%m月%d日")
+            edate = datetime.datetime.strptime(sorted_dates[-1], "%Y%m%d").strftime("%m月%d日")
             title = f"用户 {user_name} 每日发言频率 ({sdate} 至 {edate})"
             plt.title(title)
             plt.xticks(rotation=45)
@@ -745,14 +745,15 @@ class Chat(Module):
                 if uid == user_id and msg_date == date:
                     total_messages += len([m for m in messages.splitlines() if m.strip() != ""])
             # 绘制单条柱状图
-            plt.bar([0], [total_messages], width=0.4, color="#87CEEB")
+            colors = plt.get_cmap(colormap)
+            plt.bar([0], [total_messages], width=0.4, color=colors)
             plt.ylabel("发言条数")
             plt.xticks([0], [f"用户 {user_name}"])
-            data_date = datetime.datetime.strptime(str(date), '%Y%m%d').strftime('%Y-%m-%d')
+            data_date = datetime.datetime.strptime(str(date), "%Y%m%d").strftime("%m月%d日")
             title = f"用户 {user_name} 于 {data_date} 的发言统计"
             plt.title(title)
             # 在柱状图顶部标注数值
-            plt.text(0, total_messages + 0.5, str(total_messages), ha='center')
+            plt.text(0, total_messages + 0.5, str(total_messages), ha="center")
         else:
             raise ValueError("不支持这种统计方式")
 

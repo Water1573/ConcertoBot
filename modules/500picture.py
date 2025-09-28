@@ -365,14 +365,15 @@ class Picture(Module):
         except Exception as e:
             raise RuntimeError(f"群星之路被遮蔽，星辉无法汇聚: {str(e)}") from e
 
-    def get_lolicon_image(self, r18: int = 0, tags: list = None) -> dict | None:
+    def get_lolicon_image(self, r18: int = 0, ai: bool = False, tags: list = None) -> dict | None:
         """
         获取LoliconAPI图片
         :param r18: 是否获取R18图片
+        :param ai: 是否包含ai图片
         :param tags: 需要筛选的标签
         :return: 图片链接
         """
-        url = f"https://api.lolicon.app/setu/v2?r18={r18}"
+        url = f"https://api.lolicon.app/setu/v2?excludeAI={not ai}&r18={r18}&proxy=i.pximg.org"
         for tag in tags or []:
             url += f"&tag={quote(tag)}"
         resp = httpx.get(url, timeout=5)
@@ -382,8 +383,6 @@ class Picture(Module):
             return None
         else:
             img = data["data"][0]
-            if url := img.get("urls", {}).get("original"):
-                img["urls"]["original"] = url.replace("i.pixiv.re", "i.pximg.org")
             return img
 
     def search_image_saucenao(self, image_url: str, proxies: str = None) -> Tuple[bool, str | list]:
