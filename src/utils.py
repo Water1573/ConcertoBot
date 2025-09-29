@@ -684,7 +684,19 @@ def set_group_kick(robot: "Concerto", group_id: str, user_id: str):
     resp_dict = {"group_id": int(group_id), "user_id": int(user_id)}
     return api.set_group_kick(robot, resp_dict)
 
-def get_group_name(robot: "Concerto", group_id: str):
+def get_group_member_list(robot: "Concerto", group_id: str):
+    """
+    获取群名称
+    :param robot: 机器人类
+    :param id: 群号
+    """
+    if not group_id:
+        return
+    resp_dict = {"group_id": group_id, "no_cache": False}
+    return api.get_group_member_list(robot, resp_dict)
+    
+
+def get_group_name(robot: "Concerto", group_id: str) -> str:
     """
     获取群名称
     :param robot: 机器人类

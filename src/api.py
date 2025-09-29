@@ -148,6 +148,10 @@ def set_group_kick(robot: "Concerto", resp: dict):
     url = "/set_group_kick"
     return post(robot, url, resp)
 
+def get_group_member_list(robot: "Concerto", resp: dict):
+    url = "/get_group_member_list"
+    return post(robot, url, resp)
+
 def set_model_show(robot: "Concerto", resp: dict):
     url = "/_set_model_show"
     return post(robot, url, resp)

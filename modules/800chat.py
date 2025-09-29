@@ -5,6 +5,7 @@ import datetime
 import html
 import io
 import os
+import random
 import re
 import sqlite3
 import time
@@ -20,6 +21,7 @@ from wordcloud import WordCloud
 from src.utils import (
     Module,
     get_error,
+    get_group_member_list,
     get_group_name,
     get_stranger_info,
     get_user_name,
@@ -67,6 +69,7 @@ class Chat(Module):
         },
         "users": {}
     }
+    HANDLE_MESSAGE_SENT = True
 
     @via(lambda self: self.at_or_private() and self.au(2) and self.match(r"词云"), success=False)
     def wordcloud(self):
@@ -202,6 +205,7 @@ class Chat(Module):
                 else:
                     msg = "正在生成历史发言排行..."
                 rows = []
+                count = 0
                 user_name = result.group(2)
                 user_id = None
                 if user_name:
@@ -210,25 +214,30 @@ class Chat(Module):
                         self.reply(f"未找到关于{user_name}的消息记录")
                         return
                     elif user_name in self.robot.data.keys():
-                        rows = self.read_chat(gen_type, user_name)
-                        text = "\n".join([r[3] for r in rows if r[3]])
+                        rows = self.read_tally(gen_type, user_name)
+                        count = 0
+                        for row in rows:
+                            count += int(row[3]) + int(row[4]) + int(row[5]) + int(row[6])
                         msg = msg.replace("正在生成", f"正在生成{user_name}内的")
-                        msg += f"共{len(text.split("\n"))}条发言..."
+                        msg += f"共{count}条发言..."
                     else:
-                        rows = self.read_chat(gen_type, self.owner_id, user_id)
-                        text = "\n".join([r[3] for r in rows if r[3]])
-                        user_name = get_user_name(self.robot, user_id)
-                        msg = msg.replace("正在生成", f"正在生成{user_name}的")
-                        msg += f"共{len(text.split("\n"))}条发言..."
+                        rows = self.read_tally(gen_type, self.owner_id, user_id)
+                        count = 0
+                        for row in rows:
+                            count += int(row[3]) + int(row[4]) + int(row[5]) + int(row[6])
+                        msg = msg.replace("正在生成", f"正在生成{user_name}内的")
+                        msg += f"共{count}条发言..."
                 else:
-                    rows = self.read_chat(gen_type, self.owner_id, user_id)
-                    text = "\n".join([r[3] for r in rows if r[3]])
-                    msg += f"共{len(text.split("\n"))}条发言..."
+                    rows = self.read_tally(gen_type, self.owner_id, user_id)
+                    count = 0
+                    for row in rows:
+                        count += int(row[3]) + int(row[4]) + int(row[5]) + int(row[6])
+                    msg += f"共{count}条发言..."
                 if len(rows) == 0:
                     msg = "没有消息记录哦~"
                     self.reply(msg, reply=True)
                     return
-                self.printf(f"{self.owner_id}{f"内{user_id}的" if user_id else ""}发言共{len(text.split("\n"))}条")
+                self.printf(f"{self.owner_id}{f"内{user_id}的" if user_id else ""}发言共{count}条")
                 msg += "请耐心等待..."
                 self.reply(msg, reply=True)
                 set_emoji(self.robot, self.event.msg_id, 60)
@@ -410,17 +419,14 @@ class Chat(Module):
         """用户记录"""
         self.record_user(self.event.user_id, self.event.user_name)
 
-    @via(lambda self: self.config[self.owner_id]["record"]["enable"], success=False)
+    @via(lambda self: self.config[self.owner_id]["record"]["enable"]
+         or self.event.post_type == "message_sent", success=False)
     def z_record_msg(self):
         """聊天消息记录"""
-        msg = re.sub(r"(\[|【|{)[\s\S]*(\]|】|})", "", self.event.msg)
+        self.count_chat(self.owner_id, self.event.user_id, self.event.text)
+        msg = re.sub(r"(\[|【|{)[\s\S]*(\]|】|})", "", self.event.text)
         msg = re.sub(r"http[s]?://\S+", "", msg)
-        self.store_chat(
-            self.owner_id,
-            self.event.user_id,
-            msg,
-            datetime.datetime.now()
-        )
+        self.store_chat(self.owner_id, self.event.user_id, msg)
 
     @via(lambda self: self.config[self.owner_id]["repeat_record"]["enable"]
          and str(self.data.past_message).count(f"'message': '{self.event.msg}'") > 1, success=False)
@@ -455,39 +461,97 @@ class Chat(Module):
             return name
         return 0
 
-    def init_chat_db(self, conn: sqlite3.Connection):
-        """确保 chat 表存在。表结构：
-        id, owner_id, user_id, user_name, message, timestamp
-        timestamp 为整型 Unix 时间戳（秒）。
-        """
-        cur = conn.cursor()
-        cur.execute(
-            """
-            CREATE TABLE IF NOT EXISTS chat (
-                owner_id TEXT NOT NULL,
-                user_id TEXT NOT NULL,
-                date TEXT NOT NULL,                -- YYYYMMDD
-                text TEXT,
-                update_ts TEXT,
-                PRIMARY KEY (owner_id, user_id, date)
-            )
-            """
-        )
-        conn.commit()
-
-    def store_chat(self, owner_id: str, user_id: str, text: str, ts = None):
-        """
-        将单条聊天记录按 (owner_id, user_id, date) 合并写入数据库
-        """
+    def count_chat(self, owner_id: str, user_id: str, content: str):
+        """将聊天按类型记录分类计数写入数据库"""
         try:
-            if not text:
-                return
-            if ts is None:
-                ts = datetime.datetime.now()
+            text = sticker = image = others = 0
+            if re.search(r"\[CQ:image,.*,subtype=0", content):
+                sticker += 1
+            elif re.search(r"\[CQ:image,.*,subtype=1", content):
+                image += 1
+            elif re.search(r"\[CQ:.*\]", content):
+                others += 1
+            else:
+                text += 1
+            ts = datetime.datetime.now()
             date = ts.strftime("%Y%m%d")
             db = self.get_data_path(self.config["database"])
             conn = sqlite3.connect(db)
-            self.init_chat_db(conn)
+            self.init_db(conn, "tally")
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT text, sticker, image, others FROM tally WHERE owner_id=? AND user_id=? AND date=?",
+                (owner_id, user_id, date),
+            )
+            row = cur.fetchone()
+            if row and row[0]:
+                text += row[0]
+                sticker += row[1]
+                image += row[2]
+                others += row[3]
+                cur.execute(
+                    "UPDATE tally SET text=?, sticker=?, image=?, others=?, update_ts=? WHERE owner_id=? AND user_id=? AND date=?",
+                    (text, sticker, image, others, ts.isoformat(), owner_id, user_id, date),
+                )
+            else:
+                cur.execute(
+                    "INSERT OR REPLACE INTO tally(owner_id, user_id, date, text, sticker, image, others, update_ts) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    (owner_id, user_id, date, text, sticker, image, others, ts.isoformat()),
+                )
+            conn.commit()
+            conn.close()
+        except Exception:
+            self.errorf("保存消息记录失败:\n" + traceback.format_exc())
+
+    def read_tally(self, gen_type: str, owner_id: str, user_id: str = None):
+        """读取当前会话下的所有消息的计数
+        gen_type 可选：today, yesterday, before_yesterday, this_week,
+        last_week, this_month, last_month, this_year, last_year, all
+        """
+        try:
+            chat_db = self.get_data_path(self.config["database"])
+            date_range = self.get_date_range(gen_type)
+
+            query = "SELECT owner_id, user_id, date, text, sticker, image, others FROM tally"
+            conditions = ["owner_id=?"]
+            params = [owner_id]
+
+            if user_id:
+                conditions.append("user_id=?")
+                params.append(user_id)
+
+            if date_range != (None, None):
+                start_date = date_range[0].strftime("%Y%m%d")
+                end_date = date_range[1].strftime("%Y%m%d")
+                conditions.append("date>=?")
+                conditions.append("date<=?")
+                params.extend([start_date, end_date])
+
+            where_clause = " WHERE " + " AND ".join(conditions)
+            query = f"{query}{where_clause} ORDER BY date ASC"
+
+            with sqlite3.connect(chat_db) as conn:
+                self.init_db(conn, "tally")
+                cur = conn.cursor()
+                cur.execute(query, params)
+                rows = cur.fetchall()
+            if not rows:
+                return []
+            return rows
+        except Exception:
+            self.errorf(traceback.format_exc())
+            return ""
+
+    def store_chat(self, owner_id: str, user_id: str, text: str):
+        """将单条聊天记录按 (owner_id, user_id, date) 合并写入数据库"""
+        try:
+            if not text:
+                return
+            ts = datetime.datetime.now()
+            date = ts.strftime("%Y%m%d")
+            db = self.get_data_path(self.config["database"])
+            conn = sqlite3.connect(db)
+            self.init_db(conn, "chat")
             cur = conn.cursor()
             cur.execute(
                 "SELECT text FROM chat WHERE owner_id=? AND user_id=? AND date=?",
@@ -538,7 +602,7 @@ class Chat(Module):
             query = f"{query}{where_clause} ORDER BY date ASC"
 
             with sqlite3.connect(chat_db) as conn:
-                self.init_chat_db(conn)
+                self.init_db(conn, "chat")
                 cur = conn.cursor()
                 cur.execute(query, params)
                 rows = cur.fetchall()
@@ -603,7 +667,7 @@ class Chat(Module):
                     break
         return font_path
 
-    def generate_wordcloud(self, text: str):
+    def generate_wordcloud(self, text: str) -> str:
         """生成词云图片并返回 base64 URI(base64://...)"""
 
         stopwords = set()
@@ -667,71 +731,77 @@ class Chat(Module):
         img_base64 = base64.b64encode(buf.read()).decode("utf-8")
         return f"base64://{img_base64}"
 
-    def generate_rank(self, data: list):
+    def generate_rank(self, data: list) -> str:
         """生成发言排行图片并返回 base64 URI(base64://...)"""
 
         groups = set(row[0] for row in data)
         users = set(row[1] for row in data)
         dates = set(row[2] for row in data)
+        title = ""
 
         colormap = self.config[self.owner_id]["record"]["colormap"]
         font = fm.FontProperties(fname=self.get_font())
         fm.fontManager.addfont(self.get_font())
         plt.rcParams["font.family"] = font.get_name()
         plt.rcParams['font.size'] = 18
-        plt.figure(figsize=(19.2, 10.8))
+        plt.figure(figsize=(19.2, 10.8), dpi=100)
+        fig, ax = plt.subplots(figsize=(19.2, 10.8), dpi=100)
+        ax.spines["top"].set_visible(False)
+        ax.spines["right"].set_visible(False)
+        ax.spines["bottom"].set_visible(False)
+        ax.spines["left"].set_visible(True)
+        ax.spines["left"].set_color("gray")
+        ax.tick_params(axis="both", which="both", length=0)
+        ax.set_xticks([])
 
         # 场景1：单群多用户（一个群，多个用户）
         if len(users) > 1:
             group_id = next(iter(groups))[1:]
             group_name = get_group_name(self.robot, group_id)
-            # 统计每个用户的累计发言条数（所有日期）
+            member_list = get_group_member_list(self.robot, group_id).get("data", [])
+            member_dict = {i["user_id"]: i["nickname"] for i in member_list}
+            # 统计每个用户的累计消息条数（所有日期）
             counts = {}
-            for _, user_id, _, messages in data:
-                count = len([m for m in messages.splitlines() if m.strip() != ""])
-                counts[user_id] = counts.get(user_id, 0) + count
+            for _, uid, _, text, sticker, image, others in data:
+                count = text + sticker + image + others
+                counts[uid] = counts.get(uid, 0) + count
 
             sorted_dates = sorted(dates, key=lambda x: datetime.datetime.strptime(str(x), "%Y%m%d"))
-            sorted_users = sorted(counts.items(), key=lambda x: x[1])
-            users_sorted = [get_user_name(self.robot, u) for u, _ in sorted_users]
+            sorted_users = sorted(counts.items(), key=lambda x: x[1])[:20]
+            users_sorted = [member_dict.get(u, get_user_name(self.robot, u)) for u, _ in sorted_users]
             counts_sorted = [c for _, c in sorted_users]
 
             # 绘制水平柱状图
-            colors = plt.get_cmap(colormap)(np.linspace(0, 1, len(users)))
+            colors = plt.get_cmap(colormap)(np.linspace(0, 1, len(sorted_users)))
+            colors = list(colors)
+            random.shuffle(colors)
             plt.barh(users_sorted, counts_sorted, color=colors)
-            if len(dates) < 180:
-                sdate = datetime.datetime.strptime(sorted_dates[0], "%Y%m%d").strftime("%m月%d日")
-                edate = datetime.datetime.strptime(sorted_dates[-1], "%Y%m%d").strftime("%m月%d日")
-            else:
-                sdate = datetime.datetime.strptime(sorted_dates[0], "%Y%m%d").strftime("%Y年%m月%d日")
-                edate = datetime.datetime.strptime(sorted_dates[-1], "%Y%m%d").strftime("%Y年%m月%d日")
-            title = f"群 {group_name} 累计发言统计({sdate}至{edate} 共{len(dates)}天)"
-            plt.title(title)
+            title = f"{group_name} 累计发言统计(共{len(dates)}天)"
+            if len(dates) == 1:
+                title = f"{group_name} 发言统计"
             for i, v in enumerate(counts_sorted):
-                plt.text(v + len(str(v)), i, str(v), ha="center")
+                plt.text(v + 0.02, i + 0.01, f"{v}条", ha="left", va="center")
 
         # 场景2：单用户多日期（一个用户，多天数据）
         elif len(dates) > 1:
             user_id = next(iter(users))
             user_name = get_user_name(self.robot, user_id)
-            # 统计每个日期的发言条数
+            # 统计每个日期的消息条数
             counts_by_date = {}
-            for _, uid, msg_date, messages in data:
+            for _, uid, msg_date, text, sticker, image, others in data:
                 if uid == user_id:
-                    count = len([m for m in messages.splitlines() if m.strip() != ""])
+                    count = text + sticker + image + others
                     counts_by_date[msg_date] = counts_by_date.get(msg_date, 0) + count
             # 按日期升序排序
             sorted_dates = sorted(counts_by_date.keys(), key=lambda x: datetime.datetime.strptime(str(x), "%Y%m%d"))
             values = [counts_by_date[dt] for dt in sorted_dates]
             # 转换为日期格式用于绘图
             x = [datetime.datetime.strptime(str(dt), "%Y%m%d") for dt in sorted_dates]
-            # 绘制折线图（日期 vs 发言条数）
-            plt.plot(x, values, marker="o", color="#000000")
-            plt.ylabel("发言条数")
-            sdate = datetime.datetime.strptime(sorted_dates[0], "%Y%m%d").strftime("%m月%d日")
-            edate = datetime.datetime.strptime(sorted_dates[-1], "%Y%m%d").strftime("%m月%d日")
-            title = f"用户 {user_name} 每日发言频率 ({sdate} 至 {edate})"
-            plt.title(title)
+            # 绘制折线图（日期 vs 消息条数）
+            color = random.choice(plt.get_cmap(colormap))
+            plt.plot(x, values, marker="o", color=color)
+            plt.ylabel("消息条数")
+            title = f"用户 {user_name} 每日发言频率"
             plt.xticks(rotation=45)
 
         # 场景3：单用户单日期（一个用户，一天数据）
@@ -739,23 +809,34 @@ class Chat(Module):
             user_id = next(iter(users))
             user_name = get_user_name(self.robot, user_id)
             date = next(iter(dates))
-            # 统计该用户该日的发言条数
-            total_messages = 0
-            for _, uid, msg_date, messages in data:
+            # 统计该用户该日的消息条数
+            count = 0
+            for _, uid, msg_date, text, sticker, image, others in data:
                 if uid == user_id and msg_date == date:
-                    total_messages += len([m for m in messages.splitlines() if m.strip() != ""])
+                    count = text + sticker + image + others
             # 绘制单条柱状图
-            colors = plt.get_cmap(colormap)
-            plt.bar([0], [total_messages], width=0.4, color=colors)
-            plt.ylabel("发言条数")
-            plt.xticks([0], [f"用户 {user_name}"])
-            data_date = datetime.datetime.strptime(str(date), "%Y%m%d").strftime("%m月%d日")
-            title = f"用户 {user_name} 于 {data_date} 的发言统计"
-            plt.title(title)
-            # 在柱状图顶部标注数值
-            plt.text(0, total_messages + 0.5, str(total_messages), ha="center")
+            color = random.choice(plt.get_cmap(colormap))
+            plt.bar([0], [count], width=0.4, color=color)
+            plt.xticks([0], [f"消息条数(共{count}条)"])
+            title = f"用户 {user_name} 发言统计"
         else:
             raise ValueError("不支持这种统计方式")
+
+        fig.suptitle(title, fontsize=16, y=0.95)
+        date_str = ""
+        sdate = datetime.datetime.strptime(sorted_dates[0], "%Y%m%d").strftime("%Y年%m月%d日")
+        edate = datetime.datetime.strptime(sorted_dates[-1], "%Y%m%d").strftime("%Y年%m月%d日")
+        if len(dates) == 1:
+            date_str = f"{sdate}"
+        else:
+            date_str = f"{sdate}至{edate}"
+        fig.canvas.draw()
+        renderer = fig.canvas.get_renderer()
+        temp_text = ax.text(0, 0, date_str, fontsize=12)
+        bbox = temp_text.get_window_extent(renderer=renderer)
+        text_width = bbox.width / fig.dpi / fig.get_size_inches()[0]
+        fig.text(1 - text_width - 0.01, 0.01, date_str, fontsize=12, color="gray", ha="left", va="bottom")
+        temp_text.remove()
 
         plt.tight_layout()
         buf = io.BytesIO()
@@ -778,22 +859,22 @@ class Chat(Module):
         self.reply(msg)
 
     def wordcloud_colormap(self):
-        """更改词云配色"""
+        """更改配色"""
         if self.match(r"#(\S+)"):
             colormap = self.match(r"#(\S+)").group(1)
             self.config[self.owner_id]["record"]["colormap"] = colormap
             self.save_config()
-            msg = "词云配色设置成功！"
+            msg = "配色设置成功！"
         else:
-            msg = ("请使用[#配色代码]来设置词云的配色主题,例如：“词云主题 #Pastel2”")
+            msg = ("请使用[#配色代码]来设置配色主题,例如：“词云主题 #Pastel2”")
             self.reply(msg)
             msg = "配色代码如下"
             for i in self.colormaps_to_img():
                 msg += f"[CQ:image,file={i}]"
         self.reply(msg)
 
-    def colormaps_to_img(self, batch_size=200, width=300, height_per_map=40, dpi=50):
-        """系统内colormap生成图片"""
+    def colormaps_to_img(self, batch_size=200, width=300, height_per_map=40, dpi=50) -> str:
+        """系统内colormap生成图片并返回 base64 URI(base64://...)"""
         colormaps = plt.colormaps()
         n = len(colormaps)
         n_batches = (n + batch_size - 1) // batch_size
@@ -821,21 +902,48 @@ class Chat(Module):
 
         return base64_images
 
-    def init_repeat_db(self, conn: sqlite3.Connection):
-        """确保 repeat 表存在。表结构：
-        id, owner_id, user_id, user_name, message, timestamp
-        timestamp 为整型 Unix 时间戳（秒）。
+    def init_db(self, conn: sqlite3.Connection, db_name: str):
+        """确保数据库内指定表存在。
+        repeat表结构: owner_id, user_id, date, text, update_ts
+        chat表结构: owner_id, user_id, date, text, update_ts
+        tally表结构: owner_id, user_id, date, text, sticker, image, others, update_ts
         """
         cur = conn.cursor()
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS repeat (                   -- 复读表
-                owner_id TEXT,                      -- 所属ID
-                user_id INTEGER,                    -- 用户ID
-                date TEXT NOT NULL,                 -- YYYYMMDD
-                text TEXT,                          -- 复读内容
-                update_ts TEXT                      -- 时间戳
-            );
-        """)
+        if db_name == "repeat":
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS repeat (                   -- 复读表
+                    owner_id TEXT,                      -- 组ID
+                    user_id INTEGER,                    -- 用户ID
+                    date TEXT NOT NULL,                 -- YYYYMMDD
+                    text TEXT,                          -- 复读内容
+                    update_ts TEXT,                     -- 时间
+                    PRIMARY KEY (owner_id, user_id, date)
+                );""")
+        elif db_name == "chat":
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS chat (                     -- 发言表
+                    owner_id TEXT NOT NULL,            -- 组ID
+                    user_id TEXT NOT NULL,             -- 用户ID
+                    date TEXT NOT NULL,                -- YYYYMMDD
+                    text TEXT,                         -- 发言内容
+                    update_ts TEXT,                    -- 时间
+                    PRIMARY KEY (owner_id, user_id, date)
+                );""")
+        elif db_name == "tally":
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS tally (                     -- 计数表
+                    owner_id TEXT NOT NULL,            -- 组ID
+                    user_id TEXT NOT NULL,             -- 用户ID
+                    date TEXT NOT NULL,                -- YYYYMMDD
+                    text INTEGER,                      -- 文本数量
+                    sticker INTEGER,                   -- 表情包数量
+                    image INTEGER,                     -- 表情包数量
+                    others INTEGER,                    -- 时间
+                    update_ts TEXT,                    -- 时间
+                    PRIMARY KEY (owner_id, user_id, date)
+                );""")
         conn.commit()
 
     def store_repeat(self, owner_id: str, user_id: str, text: str, ts = None):
@@ -848,7 +956,7 @@ class Chat(Module):
             date = ts.strftime("%Y%m%d")
             db_path = self.get_data_path(self.config["database"])
             conn = sqlite3.connect(db_path)
-            self.init_repeat_db(conn)
+            self.init_db(conn, "repeat")
             cursor = conn.cursor()
             cursor.execute(
                 "INSERT INTO repeat VALUES (?, ?, ?, ?, ?);",
