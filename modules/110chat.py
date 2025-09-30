@@ -122,28 +122,28 @@ class Chat(Module):
                 if user_name:
                     user_id = self.get_uid(user_name)
                     if not user_id and user_name not in self.robot.data.keys():
-                        self.reply(f"未找到关于{user_name}的消息记录")
+                        self.reply(f"未检索到关于{user_name}的消息记录")
                         return
                     elif user_name in self.robot.data.keys():
                         rows = self.read_chat(gen_type, user_name)
                         text = "\n".join([r[3] for r in rows if r[3]])
                         msg = msg.replace("正在生成", f"正在生成{user_name}内的")
-                        msg += f"共{len(text.split("\n"))}条发言..."
+                        msg += f"共{len(text.split("\n"))}条有效发言..."
                     else:
                         rows = self.read_chat(gen_type, self.owner_id, user_id)
                         text = "\n".join([r[3] for r in rows if r[3]])
                         user_name = get_user_name(self.robot, user_id)
                         msg = msg.replace("正在生成", f"正在生成{user_name}的")
-                        msg += f"共{len(text.split("\n"))}条发言..."
+                        msg += f"共{len(text.split("\n"))}条有效发言..."
                 else:
                     rows = self.read_chat(gen_type, self.owner_id, user_id)
                     text = "\n".join([r[3] for r in rows if r[3]])
-                    msg += f"共{len(text.split("\n"))}条发言..."
+                    msg += f"共{len(text.split("\n"))}条有效发言..."
                 if not text:
                     msg = "没有消息记录哦~"
                     self.reply(msg, reply=True)
                     return
-                self.printf(f"{self.owner_id}{f"内{user_id}的" if user_id else ""}发言共{len(text.split("\n"))}条")
+                self.printf(f"{self.owner_id}{f"内{user_id}的" if user_id else ""}有效发言共{len(text.split("\n"))}条")
                 msg += "请耐心等待..."
                 self.reply(msg, reply=True)
                 set_emoji(self.robot, self.event.msg_id, 60)
@@ -163,7 +163,7 @@ class Chat(Module):
         self.reply(msg, reply=True)
 
     @via(lambda self: self.at_or_private() and self.au(2) and self.match(r"(发言|群聊|聊天|消息)(排行|统计)"), success=False)
-    def rank(self):
+    def statistics(self):
         """发言排行"""
         date_pattern = "历史|全部|今天|今日|本日|这天|昨天|昨日|前天|前日|本周|这周|此周|这个?礼拜|这个?星期|上周|上个?礼拜|上个?星期|本月|这月|次月|这个月|上个?月|今年|本年|此年|这一?年|去年|上一?年"
         if self.match(r"(开启|启用|打开|记录|启动|关闭|禁用|取消)"):
@@ -172,7 +172,7 @@ class Chat(Module):
                 return
             else:
                 msg = "你没有此操作的权限！"
-        elif result := self.match(rf"(给|为)?([^\s]*?)?\s?(生成|的)?({date_pattern})?的?"):
+        elif result := self.match(rf"(给|为)?([^\s]*?)?\s?(生成|的)?({date_pattern})?的?(发言|群聊|聊天|消息)(排行|统计)"):
             if self.config[self.owner_id]["record"]["enable"]:
                 gen_type = "all"
                 if self.match(r"(今天|今日|本日|这天)"):
@@ -211,38 +211,31 @@ class Chat(Module):
                 if user_name:
                     user_id = self.get_uid(user_name)
                     if not user_id and user_name not in self.robot.data.keys():
-                        self.reply(f"未找到关于{user_name}的消息记录")
+                        self.reply(f"未检索到关于{user_name}的消息记录")
                         return
                     elif user_name in self.robot.data.keys():
                         rows = self.read_tally(gen_type, user_name)
                         count = 0
                         for row in rows:
                             count += int(row[3]) + int(row[4]) + int(row[5]) + int(row[6])
-                        msg = msg.replace("正在生成", f"正在生成{user_name}内的")
-                        msg += f"共{count}条发言..."
                     else:
                         rows = self.read_tally(gen_type, self.owner_id, user_id)
                         count = 0
                         for row in rows:
                             count += int(row[3]) + int(row[4]) + int(row[5]) + int(row[6])
-                        msg = msg.replace("正在生成", f"正在生成{user_name}内的")
-                        msg += f"共{count}条发言..."
                 else:
                     rows = self.read_tally(gen_type, self.owner_id, user_id)
                     count = 0
                     for row in rows:
                         count += int(row[3]) + int(row[4]) + int(row[5]) + int(row[6])
-                    msg += f"共{count}条发言..."
                 if len(rows) == 0:
                     msg = "没有消息记录哦~"
                     self.reply(msg, reply=True)
                     return
                 self.printf(f"{self.owner_id}{f"内{user_id}的" if user_id else ""}发言共{count}条")
-                msg += "请耐心等待..."
-                self.reply(msg, reply=True)
                 set_emoji(self.robot, self.event.msg_id, 60)
                 try:
-                    url = self.generate_rank(rows)
+                    url = self.generate_statistics(rows)
                     msg = f"[CQ:image,file={url}]"
                 except Exception:
                     self.errorf(traceback.format_exc())
@@ -364,7 +357,7 @@ class Chat(Module):
         inputs = self.match(r"(\S+?)(又|也|同时)能?被?(称|叫)(为|做)?(\S+)").groups()
         name = inputs[0]
         label = inputs[-1]
-        msg = "好像没有找到这个用户欸~"
+        msg = "好像没有检索到这个用户欸~"
         if name.isdigit():
             info = get_stranger_info(self.robot, name)
             if status_ok(info):
@@ -415,13 +408,13 @@ class Chat(Module):
 
     @via(lambda self: self.event.user_id not in self.config[self.owner_id]["users"]
          or self.event.user_name != self.config[self.owner_id]["users"].get(self.event.user_id,{}).get("nickname",""), success=False)
-    def z_record_user(self):
+    def a_record_user(self):
         """用户记录"""
         self.record_user(self.event.user_id, self.event.user_name)
 
     @via(lambda self: self.config[self.owner_id]["record"]["enable"]
          or self.event.post_type == "message_sent", success=False)
-    def z_record_msg(self):
+    def a_record_msg(self):
         """聊天消息记录"""
         self.count_chat(self.owner_id, self.event.user_id, self.event.text)
         msg = re.sub(r"(\[|【|{)[\s\S]*(\]|】|})", "", self.event.text)
@@ -430,7 +423,7 @@ class Chat(Module):
 
     @via(lambda self: self.config[self.owner_id]["repeat_record"]["enable"]
          and str(self.data.past_message).count(f"'message': '{self.event.msg}'") > 1, success=False)
-    def z_store_repeat(self):
+    def a_store_repeat(self):
         """复读消息记录"""
         self.store_repeat(self.owner_id, self.event.user_id, self.event.msg)
 
@@ -444,6 +437,8 @@ class Chat(Module):
 
     def get_uid(self, name):
         """使用用户名获取ID"""
+        if match := re.search(r"\[CQ:at,qq=(\d+)\]", name):
+            return match.group(1)
         config = self.config[self.owner_id]
         if name in config["users"]:
             return name
@@ -459,17 +454,21 @@ class Chat(Module):
             return self.event.user_id
         if name.isdigit():
             return name
+        member_list = get_group_member_list(self.robot, self.event.group_id).get("data", [])
+        for member in member_list:
+            if name == member["card"] or name == member["nickname"]:
+                return member["user_id"]
         return 0
 
     def count_chat(self, owner_id: str, user_id: str, content: str):
         """将聊天按类型记录分类计数写入数据库"""
         try:
             text = sticker = image = others = 0
-            if re.search(r"\[CQ:image,.*,subtype=0", content):
-                sticker += 1
-            elif re.search(r"\[CQ:image,.*,subtype=1", content):
+            if re.search(r"^\[CQ:image.*sub_type=0.*\]$", content):
                 image += 1
-            elif re.search(r"\[CQ:.*\]", content):
+            elif re.search(r"^\[CQ:image.*\]$", content):
+                sticker += 1
+            elif re.search(r"^\[CQ:.*\]$", content):
                 others += 1
             else:
                 text += 1
@@ -676,7 +675,7 @@ class Chat(Module):
             with open(stopwords_path, "r", encoding="utf-8") as f:
                 lines = [l.strip() for l in f]
         except FileNotFoundError as e:
-            raise FileNotFoundError(f"未找到可用的停词表: {e.filename}") from e
+            raise FileNotFoundError(f"未检索到可用的停词表: {e.filename}") from e
         stopwords = set(lines)
         words = jieba.lcut(text)
         filtered = []
@@ -731,7 +730,7 @@ class Chat(Module):
         img_base64 = base64.b64encode(buf.read()).decode("utf-8")
         return f"base64://{img_base64}"
 
-    def generate_rank(self, data: list) -> str:
+    def generate_statistics(self, data: list) -> str:
         """生成发言排行图片并返回 base64 URI(base64://...)"""
 
         groups = set(row[0] for row in data)
@@ -753,22 +752,23 @@ class Chat(Module):
         ax.spines["left"].set_color("gray")
         ax.tick_params(axis="both", which="both", length=0)
         ax.set_xticks([])
+        
+        sorted_dates = sorted(dates, key=lambda x: datetime.datetime.strptime(str(x), "%Y%m%d"))
 
         # 场景1：单群多用户（一个群，多个用户）
         if len(users) > 1:
             group_id = next(iter(groups))[1:]
             group_name = get_group_name(self.robot, group_id)
             member_list = get_group_member_list(self.robot, group_id).get("data", [])
-            member_dict = {i["user_id"]: i["nickname"] for i in member_list}
+            member_dict = {i["user_id"]: i["card"] or i["nickname"] for i in member_list}
             # 统计每个用户的累计消息条数（所有日期）
             counts = {}
             for _, uid, _, text, sticker, image, others in data:
                 count = text + sticker + image + others
                 counts[uid] = counts.get(uid, 0) + count
 
-            sorted_dates = sorted(dates, key=lambda x: datetime.datetime.strptime(str(x), "%Y%m%d"))
-            sorted_users = sorted(counts.items(), key=lambda x: x[1])[:20]
-            users_sorted = [member_dict.get(u, get_user_name(self.robot, u)) for u, _ in sorted_users]
+            sorted_users = sorted(counts.items(), key=lambda x: x[1])[-20:]
+            users_sorted = [member_dict.get(int(u), get_user_name(self.robot, u)) for u, _ in sorted_users]
             counts_sorted = [c for _, c in sorted_users]
 
             # 绘制水平柱状图
@@ -778,9 +778,11 @@ class Chat(Module):
             plt.barh(users_sorted, counts_sorted, color=colors)
             title = f"{group_name} 累计发言统计(共{len(dates)}天)"
             if len(dates) == 1:
-                title = f"{group_name} 发言统计"
+                title = f"{group_name} 发言统计(共{sum(counts.values())}条)"
+            if len(counts) > 20:
+                title += "(仅展示20人)"
             for i, v in enumerate(counts_sorted):
-                plt.text(v + 0.02, i + 0.01, f"{v}条", ha="left", va="center")
+                plt.text(v + 0.1, i, f"{v}条", ha="left", va="center")
 
         # 场景2：单用户多日期（一个用户，多天数据）
         elif len(dates) > 1:
@@ -793,7 +795,6 @@ class Chat(Module):
                     count = text + sticker + image + others
                     counts_by_date[msg_date] = counts_by_date.get(msg_date, 0) + count
             # 按日期升序排序
-            sorted_dates = sorted(counts_by_date.keys(), key=lambda x: datetime.datetime.strptime(str(x), "%Y%m%d"))
             values = [counts_by_date[dt] for dt in sorted_dates]
             # 转换为日期格式用于绘图
             x = [datetime.datetime.strptime(str(dt), "%Y%m%d") for dt in sorted_dates]
@@ -804,21 +805,37 @@ class Chat(Module):
             title = f"用户 {user_name} 每日发言频率"
             plt.xticks(rotation=45)
 
-        # 场景3：单用户单日期（一个用户，一天数据）
-        elif len(users) == 1 and len(dates) == 1:
+        # 场景3：单用户,绘制饼图
+        elif len(users) == 1:
             user_id = next(iter(users))
             user_name = get_user_name(self.robot, user_id)
-            date = next(iter(dates))
-            # 统计该用户该日的消息条数
-            count = 0
+            total = text = sticker = image = others = 0
             for _, uid, msg_date, text, sticker, image, others in data:
-                if uid == user_id and msg_date == date:
-                    count = text + sticker + image + others
-            # 绘制单条柱状图
-            color = random.choice(plt.get_cmap(colormap))
-            plt.bar([0], [count], width=0.4, color=color)
-            plt.xticks([0], [f"消息条数(共{count}条)"])
-            title = f"用户 {user_name} 发言统计"
+                total += text + sticker + image + others
+                text += text
+                sticker += sticker
+                image += image
+                others += others
+            # 绘制饼图
+            labels = ["文本", "表情包", "图片", "其他"]
+            sizes = [text, sticker, image, others]
+            filtered_labels = [l for s, l in zip(sizes, labels) if s > 0]
+            filtered_sizes = [s for s in sizes if s > 0]
+            colors = plt.get_cmap(colormap)(np.linspace(0, 1, len(filtered_labels)))
+            def autopct(pct, sizes, labels):
+                index = autopct.i
+                autopct.i += 1
+                return f"{labels[index]}{sizes[index]}条 {pct:.1f}%"
+            autopct.i = 0
+            plt.pie(
+                filtered_sizes,
+                colors=colors,
+                pctdistance= 0.6,
+                autopct=lambda pct: autopct(pct, filtered_sizes, filtered_labels),
+                startangle=180
+            )
+            plt.axis("equal")
+            title = f"用户 {user_name} 发言统计(共{total}条)"
         else:
             raise ValueError("不支持这种统计方式")
 

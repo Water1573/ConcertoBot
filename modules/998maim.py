@@ -254,13 +254,13 @@ class Maim(Module):
                 new_payload = build_payload(payload, f"[CQ:face,id={face_id}]", False)
             elif seg.type == "image":
                 image = seg.data
-                new_payload = build_payload(payload, f"[CQ:image,file=base64://{image},subtype=0]", False)
+                new_payload = build_payload(payload, f"[CQ:image,file=base64://{image},sub_type=0]", False)
             elif seg.type == "emoji":
                 emoji = seg.data
                 image_format = get_image_format(emoji)
                 if image_format != "gif":
                     emoji = self.convert_image_to_gif(emoji)
-                new_payload = build_payload(payload, f"[CQ:image,file=base64://{emoji},subtype=1,summary=&#91;动画表情&#93;]", False)
+                new_payload = build_payload(payload, f"[CQ:image,file=base64://{emoji},sub_type=1,summary=&#91;动画表情&#93;]", False)
             elif seg.type == "voice":
                 voice = seg.data
                 new_payload = build_payload(payload, f"[CQ:voice,file=base64://{voice}]", False)

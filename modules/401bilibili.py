@@ -557,13 +557,12 @@ class Bilibili(Module):
                         msg += f"[CQ:image,file={img}]"
                 nodes.append(self.node(msg))
                 if ori := dyn["origin"]:
-                    nodes.append(self.node("====================\n以下是转发的动态内容:"))
-                    nodes.append(self.node(ori["url"]))
-                    ori_msg = f"{ori["author"]}:\n"
-                    ori_msg += ori["content"]
+                    msg = f"以下是转发内容:\n====================\n"
+                    msg += f"{ori["author"]}:\n"
+                    msg += ori["content"]
                     for img in ori["imgs"]:
-                        ori_msg += f"[CQ:image,file={img}]"
-                    nodes.append(self.node(ori_msg))
+                        msg += f"[CQ:image,file={img}]"
+                    nodes.append(self.node(msg))
                 for owner_id in notice_list:
                     pattern = self.config[owner_id]["sub"][uid].get("keyword")
                     if pattern == "" or re.search(pattern, msg):
