@@ -57,6 +57,7 @@ class Chat(Module):
     GLOBAL_CONFIG = {
         "database": "data.db",
         "font": "MiSans-Bold.ttf",
+        "emoji-font": "NotoEmoji-Bold.ttf",
         "stopwords": "stopwords.txt",
     }
     CONV_CONFIG = {
@@ -741,7 +742,12 @@ class Chat(Module):
         colormap = self.config[self.owner_id]["record"]["colormap"]
         font = fm.FontProperties(fname=self.get_font())
         fm.fontManager.addfont(self.get_font())
-        plt.rcParams["font.family"] = font.get_name()
+        font_family = [font.get_name()]
+        if emoji_font_path := self.get_data_path(self.config["emoji-font"]):
+            fm.fontManager.addfont(emoji_font_path)
+            emoji_font = fm.FontProperties(fname=emoji_font_path)
+            font_family.append(emoji_font.get_name())
+        plt.rcParams["font.family"] = font_family
         plt.rcParams['font.size'] = 18
         plt.figure(figsize=(19.2, 10.8), dpi=100)
         fig, ax = plt.subplots(figsize=(19.2, 10.8), dpi=100)
@@ -760,7 +766,13 @@ class Chat(Module):
             group_id = next(iter(groups))[1:]
             group_name = get_group_name(self.robot, group_id)
             member_list = get_group_member_list(self.robot, group_id).get("data", [])
-            member_dict = {i["user_id"]: i["card"] or i["nickname"] for i in member_list}
+            member_dict = {}
+            for member in member_list:
+                name = member["card"] or member["nickname"]
+                # 处理所有空白字符
+                if re.match(r"^[\s\u00A0\u200B\u202F\u2060\u3000\u202A\u202B\u202E\u2066\u2067]+$", name):
+                    name = member["user_id"]
+                member_dict[member["user_id"]] = name
             # 统计每个用户的累计消息条数（所有日期）
             counts = {}
             for _, uid, _, text, sticker, image, others in data:
@@ -776,11 +788,9 @@ class Chat(Module):
             colors = list(colors)
             random.shuffle(colors)
             plt.barh(users_sorted, counts_sorted, color=colors)
-            title = f"{group_name} 累计发言统计(共{len(dates)}天)"
-            if len(dates) == 1:
-                title = f"{group_name} 发言统计(共{sum(counts.values())}条)"
+            title = f"{group_name} 累计发言统计({len(dates)}天共{sum(counts.values())}条)"
             if len(counts) > 20:
-                title += "(仅展示20人)"
+                title += "(仅展示前20人)"
             for i, v in enumerate(counts_sorted):
                 plt.text(v + 0.1, i, f"{v}条", ha="left", va="center")
 
