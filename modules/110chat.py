@@ -335,6 +335,7 @@ class Chat(Module):
                 nickname = msg.get("sender",{}).get("nickname","")
                 content = html.unescape(msg.get("message",""))
                 content = re.sub(r",sub_type=\d", "", content)
+                content = re.sub(r"\[CQ:record.*path=([^,]+).*\]", r"[CQ:file,file=\1]", content)
                 nodes.append(self.node(content, user_id=user_id, nickname=nickname))
             self.reply_forward(nodes, "1小时内撤回消息列表")
         else:

@@ -327,8 +327,8 @@ def resize_image(image: bytes, size=(640, 360), format: str = "JPEG") -> bytes:
     new_img.save(buf, format=format)
     return buf.getvalue()
 
-async def async_get_image_base64(robot : "Concerto", url: str, timeout: str=3, max_retries: str=3) -> str:
-    """获取图片的Base64"""
+async def async_get_content_base64(robot : "Concerto", url: str, timeout: str=3, max_retries: str=3) -> str:
+    """获取url所指内容的Base64"""
     for attempt in range(max_retries):
         try:
             response = await httpx.AsyncClient().get(url, timeout=timeout)
@@ -336,12 +336,12 @@ async def async_get_image_base64(robot : "Concerto", url: str, timeout: str=3, m
                 raise httpx.HTTPError(response.text)
             return base64.b64encode(response.content).decode("utf-8")
         except httpx.TimeoutException:
-            robot.printf(f"请求图片超时重试 {attempt + 1}/{max_retries}")
+            robot.printf(f"请求内容超时重试 {attempt + 1}/{max_retries}")
             if attempt + 1 == max_retries:
                 raise
 
-def get_image_base64(robot : "Concerto", url: str, timeout: str=3, max_retries: str=3) -> str:
-    """获取图片的Base64"""
+def get_content_base64(robot : "Concerto", url: str, timeout: str=3, max_retries: str=3) -> str:
+    """获取url所指内容的Base64"""
     if not url:
         return ""
     for attempt in range(max_retries):
@@ -351,7 +351,7 @@ def get_image_base64(robot : "Concerto", url: str, timeout: str=3, max_retries: 
                 raise httpx.HTTPError(response.text)
             return base64.b64encode(response.content).decode("utf-8")
         except httpx.TimeoutException:
-            robot.printf(f"请求图片超时重试 {attempt + 1}/{max_retries}")
+            robot.printf(f"请求内容超时重试 {attempt + 1}/{max_retries}")
             if attempt + 1 == max_retries:
                 raise
 
@@ -716,15 +716,25 @@ def get_group_name(robot: "Concerto", group_id: str) -> str:
         else:
             return ""
 
-def get_image(robot: "Concerto", file: str):
+def get_image(robot: "Concerto", file: str) -> dict:
     """
     获取图片
     :param robot: 机器人类
     :param file: 文件的标识码
-    :return: 文件下载链接
     """
     resp_dict = {"file": file}
     return api.get_image(robot, resp_dict)
+
+def get_record(robot: "Concerto", file_id: str, out_format: str = "mp3") -> dict:
+    """
+    获取图片
+    :param robot: 机器人类
+    :param file_id: 文件的标识码
+    :param out_format: 文件的标识码
+    :return: 文件下载链接
+    """
+    resp_dict = {"file_id": file_id, "out_format": out_format}
+    return api.get_record(robot, resp_dict)
 
 def poke(robot: "Concerto", user_id: str, group_id: str | None=None):
     """

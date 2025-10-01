@@ -17,6 +17,7 @@ from src.utils import (
     poke,
     reply_add,
     reply_id,
+    send_group_ai_record,
     send_group_notice,
     send_like,
     set_model_show,
@@ -48,6 +49,7 @@ class ExecuteCmd(object):
         self.robot = robot
         self.robot.cmd = {
             "add": "对添加请求进行操作",
+            "aivoice": "发送AI声聊消息",
             "api": "查看向API请求的历史记录",
             "debug": "开关调试模式",
             "deop": "取消管理员权限",
@@ -290,6 +292,21 @@ class ExecuteCmd(object):
                 self.warnf(f"向群{Fore.MAGENTA}{group_name}({group_id}){Fore.RESET}发送文本转语音消息出错！{result.get("message")}")
         else:
             self.printf(f"请使用 {Fore.CYAN}groupvoice 群号 文本{Fore.RESET} 发送文本转语音")
+
+    def aivoice(self, argv=""):
+        if re.search(r"(\S+)\s+(\d+)\s?(\S+)?", argv):
+            match = re.search(r"(\S+)\s+(\d+)\s?(\S+)?", argv).groups()
+            text = match[0]
+            group_id = match[1]
+            character = match[2] or "lucy-voice-xueling"
+            group_name = get_group_name(self.robot, group_id)
+            result = send_group_ai_record(self.robot, group_id, character, text)
+            if status_ok(result):
+                self.printf(f"向群{Fore.MAGENTA}{group_name}({group_id}){Fore.RESET}发送AI声聊消息：{Fore.YELLOW}{match[1]}")
+            else:
+                self.warnf(f"向群{Fore.MAGENTA}{group_name}({group_id}){Fore.RESET}发送AI声聊消息出错！{result.get("message")}")
+        else:
+            self.printf(f"请使用 {Fore.CYAN}aivoice 文本 群号 声色{Fore.RESET} 发送AI声聊")
 
     def help(self, argv=""):
         all_page = int(len(self.robot.cmd) / 10 + 1)

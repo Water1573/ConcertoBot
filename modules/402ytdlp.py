@@ -11,7 +11,7 @@ import traceback
 import urllib
 from yt_dlp import YoutubeDL, DownloadError
 
-from src.utils import Module, calc_size, calc_time, format_to_log, get_image_base64, set_emoji, via
+from src.utils import Module, calc_size, calc_time, format_to_log, get_content_base64, set_emoji, via
 
 class Ytdlp(Module):
     """视频下载模块"""
@@ -274,7 +274,7 @@ class Ytdlp(Module):
         title = info.get("title", "[未知]")
         uploader = info.get("uploader", "")
         thumbnail = info.get("thumbnail", "")
-        img = get_image_base64(self.robot, thumbnail)
+        img = get_content_base64(self.robot, thumbnail)
         duration = info.get("duration", 0)
         if info.get("_type") == "playlist":
             description = info.get("description", "")

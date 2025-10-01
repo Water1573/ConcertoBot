@@ -32,9 +32,10 @@ from src.utils import (
     apply_formatter,
     del_msg,
     get_forward_msg,
-    async_get_image_base64,
+    async_get_content_base64,
     get_image_format,
     get_msg,
+    get_record,
     group_member_info,
     poke,
     reply_id,
@@ -107,7 +108,7 @@ class Maim(Module):
         try:
             message: MessageBase = MessageBase.from_dict(raw_message)
             simple_msg = re.sub(
-                r"type='(image|emoji)',\s?data='.*?'",
+                r"type='(image|emoji|voice)',\s?data='.*?'",
                 r"type='\1', data='Base64File'",
                 str(message.message_segment)
             )
@@ -330,6 +331,14 @@ class Maim(Module):
                         seg = ret_seg
                 case "record":
                     seg = Seg(type="text", data="<语音>")
+                    try:
+                        file_id = data.get("file")
+                        data = get_record(self.robot, file_id)
+                        if status_ok(data):
+                            record_base64 = data.get("data").get("base64")
+                            seg = Seg(type="voice", data=record_base64)
+                    except Exception as e:
+                        self.errorf(f"语音消息处理失败: {str(e)}")
                 case "video":
                     seg = Seg(type="text", data="<视频>")
                 case "at":
@@ -357,9 +366,10 @@ class Maim(Module):
                 case "music":
                     seg = Seg(type="text", data="<音乐>")
                 case "image":
+                    seg = Seg(type="text", data="<图片>")
                     try:
                         url = data.get("url")
-                        image_base64 = await async_get_image_base64(self.robot, url)
+                        image_base64 = await async_get_content_base64(self.robot, url)
                         sub_type = data.get("sub_type")
                         if sub_type == 0:
                             seg = Seg(type="image", data=image_base64)
@@ -454,13 +464,13 @@ class Maim(Module):
                         if process_count > 5:
                             seg_data = Seg(type="text", data="[图片]\n")
                         else:
-                            img_base64 = await async_get_image_base64(self.robot, image_url)
+                            img_base64 = await async_get_content_base64(self.robot, image_url)
                             seg_data = Seg(type="image", data=f"{img_base64}\n")
                     else:
                         if process_count > 3:
                             seg_data = Seg(type="text", data="[表情包]\n")
                         else:
-                            img_base64 = await async_get_image_base64(self.robot, image_url)
+                            img_base64 = await async_get_content_base64(self.robot, image_url)
                             seg_data = Seg(type="emoji", data=f"{img_base64}\n")
                     if layer > 0:
                         data_list = [Seg(type="text", data=("--" * layer) + user_nickname_str), seg_data]
@@ -479,7 +489,7 @@ class Maim(Module):
                 return False
             if msg.message_segment:
                 simple_msg = re.sub(
-                    r"type='(image|emoji)',\s?data='.*?'",
+                    r"type='(image|emoji|voice)',\s?data='.*?'",
                     r"type='\1', data='Base64File'",
                     str(msg.message_segment.data)
                 )

@@ -91,12 +91,16 @@ def send_group_notice(robot: "Concerto", resp: dict):
     return get(robot, url)
 
 def send_group_ai_record(robot: "Concerto", resp: dict):
-    return post(robot, "/send_group_ai_record", resp)
+    url = "/send_group_ai_record"
+    return post(robot, url, resp)
 
 def get_image(robot: "Concerto", resp: dict):
-    file = resp["file"]  # 图片缓存文件名
-    url = "/get_image?file=" + str(file)
-    return get(robot, url)
+    url = "/get_image"
+    return post(robot, url, resp)
+
+def get_record(robot: "Concerto", resp: dict):
+    url = "/get_record"
+    return post(robot, url, resp)
 
 def handle_quick_operation(robot: "Concerto", resp: dict):
     context = resp["context"]  # 事件数据对象

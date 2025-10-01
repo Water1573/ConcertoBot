@@ -6,7 +6,7 @@ import time
 from colorama import Fore
 import httpx
 from src.api import del_msg, get_version_info, send_msg
-from src.utils import Module, get_group_name, get_user_name, import_json, status_ok, via
+from src.utils import Module, get_group_name, get_user_name, send_group_ai_record, import_json, status_ok, via
 
 
 class Message(Module):
@@ -26,7 +26,7 @@ class Message(Module):
         ],
         2: [
             "测试 | 进行基准测试",
-            "语音 [文字] | 文字转语音",
+            "读 [文字] | 文字转语音",
         ],
         3: [
             "帮助 | 展示机器人全部可用功能",
@@ -260,17 +260,18 @@ class Message(Module):
             msg = f"测试{thing}OK!"
         self.reply(msg)
 
-    @via(lambda self: self.at_or_private() and self.au(1) and self.match(r"^语音\s?\S*"))
+    @via(lambda self: self.at_or_private() and self.au(2) and self.match(r"^(语音|读)\s?\S*"))
     def voice(self):
-        if self.match(r"语音\s?\S+"):
-            msg = (
-                "[CQ:tts,text="
-                + self.match(r"语音\s?(\S+)").group(1)
-                + " ]"
-            )
+        text = "后面加上需要让我读出来的字嘛"
+        if self.match(r"(语音|读)\s?.*"):
+            text = self.match(r"(语音|读)\s?(.*)").group(2)
+        if self.is_private():
+            msg = f"[CQ:tts,text={text}]"
+            result = self.reply(msg)
         else:
-            msg = "[CQ:tts,text=请输入需要让我读出来的字嘛]"
-        self.reply(msg)
+            result = send_group_ai_record(self.robot, self.event.group_id, "lucy-voice-xueling", text)
+        if not status_ok(result):
+            self.reply(f"语音消息发送失败 {result.get("message")}", reply=True)        
 
     @via(lambda self: self.at_or_private() and self.au(1) and self.match(r"^(在吗|你好)$"))
     def reply_msg(self):
