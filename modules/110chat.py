@@ -14,8 +14,8 @@ import traceback
 import jieba
 from matplotlib import font_manager as fm
 from matplotlib import pyplot as plt
-from PIL import Image, ImageDraw
 import numpy as np
+from PIL import Image, ImageDraw
 from wordcloud import WordCloud
 
 from src.utils import (
@@ -23,6 +23,7 @@ from src.utils import (
     get_error,
     get_group_member_list,
     get_group_name,
+    get_record,
     get_stranger_info,
     get_user_name,
     set_emoji,
@@ -59,6 +60,7 @@ class Chat(Module):
         "font": "MiSans-Bold.ttf",
         "emoji-font": "NotoEmoji-Bold.ttf",
         "stopwords": "stopwords.txt",
+        "qq_data": "/app/QQ"
     }
     CONV_CONFIG = {
         "record": {
@@ -323,11 +325,21 @@ class Chat(Module):
             msg = "生成转发消息错误~"
             self.reply(msg)
 
+    @via(lambda self: self.match(r"^\[CQ:record.*\]$"))
+    def fix_record_file(self):
+        """使用API获取语音消息正确格式的语音文件"""
+        if match := self.match(r"^\[CQ:record.*,file=([^,]+).*\]$"):
+            file_id = match.group(1)
+            get_record(self.robot, file_id)
+
     @via(lambda self: self.at_or_private() and self.au(2) and self.match(r"^(刚刚|刚才|先前)?\S*(说|撤回)了?(什么|啥)"))
     def what_recall(self):
         """撤回了什么"""
         if messages := self.robot.data.get("latest_recall",{}).get(self.owner_id):
+            if not self.is_private():
+                set_emoji(self.robot, self.event.msg_id, 124)
             nodes = []
+            llm_stt = self.robot.func["llm_stt"]
             for msg in messages:
                 if msg.get("time") and time.time() - msg.get("time") > 3600:
                     continue
@@ -335,9 +347,25 @@ class Chat(Module):
                 nickname = msg.get("sender",{}).get("nickname","")
                 content = html.unescape(msg.get("message",""))
                 content = re.sub(r",sub_type=\d", "", content)
-                content = re.sub(r"\[CQ:record.*path=([^,]+).*\]", r"[CQ:file,file=\1]", content)
+                match = re.search(r"\[CQ:record.*path=([^,]+).*\]", content)
+                text = "未知语音"
+                if match and llm_stt:
+                    try:
+                        file_path = match.group(1)
+                        if qq_data := self.config["qq_data"]:
+                            file_path = file_path.replace("/app/.config/QQ", qq_data) + ".mp3"
+                        record = open(file_path, "rb").read()
+                        text = llm_stt(file = {"file": ("r.mp3", record, "audio/mpeg") })
+                        b64 = base64.b64encode(record).decode()
+                        nodes.append(self.node(
+                            f"[CQ:file,name=语音.mp3,file=base64://{b64}]",
+                            user_id=user_id, nickname=nickname
+                        ))
+                    except Exception:
+                        self.errorf(traceback.format_exc())
+                content = re.sub(r"\[CQ:record.*\]", f"[语音:{text.strip()}]", content)
                 nodes.append(self.node(content, user_id=user_id, nickname=nickname))
-            self.reply_forward(nodes, "1小时内撤回消息列表")
+            self.reply_forward(nodes, "一小时内撤回消息列表")
         else:
             self.reply("什么也没有哦~")
 
@@ -729,8 +757,8 @@ class Chat(Module):
         buf = io.BytesIO()
         plt.savefig(buf, format="png", bbox_inches="tight", pad_inches=0, dpi=400)
         buf.seek(0)
-        img_base64 = base64.b64encode(buf.read()).decode("utf-8")
-        return f"base64://{img_base64}"
+        b64 = base64.b64encode(buf.read()).decode("utf-8")
+        return f"base64://{b64}"
 
     def generate_statistics(self, data: list) -> str:
         """生成发言排行图片并返回 base64 URI(base64://...)"""
@@ -871,8 +899,8 @@ class Chat(Module):
         plt.savefig(buf, format="png")
         plt.close()
         buf.seek(0)
-        img_base64 = base64.b64encode(buf.read()).decode("utf-8")
-        return f"base64://{img_base64}"
+        b64 = base64.b64encode(buf.read()).decode("utf-8")
+        return f"base64://{b64}"
 
     def record_switch(self):
         """打开或关闭消息记录"""
@@ -924,8 +952,8 @@ class Chat(Module):
             buf = io.BytesIO()
             plt.savefig(buf, format="jpg", bbox_inches="tight", pad_inches=0, dpi=dpi*4)
             buf.seek(0)
-            img_base64 = base64.b64encode(buf.read()).decode("utf-8")
-            base64_images.append(f"base64://{img_base64}")
+            b64 = base64.b64encode(buf.read()).decode("utf-8")
+            base64_images.append(f"base64://{b64}")
             plt.close()
 
         return base64_images

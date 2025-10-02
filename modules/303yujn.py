@@ -93,10 +93,10 @@ class YUJN(Module):
             def api_req():
                 resp = httpx.get(api_url, timeout=5, follow_redirects=True)
                 resp.raise_for_status()
-                data = base64.b64encode(resp.content).decode("utf-8")
-                return f"base64://{data}"
-            data = self.retry(api_req)
-            self.reply(f"[CQ:video,file={data}]")
+                b64 = base64.b64encode(resp.content).decode("utf-8")
+                return f"base64://{b64}"
+            b64 = self.retry(api_req)
+            self.reply(f"[CQ:video,file={b64}]")
         except Exception as e:
             self.errorf(traceback.format_exc())
             self.errorf(f"遇见API请求失败: {e}")
@@ -131,10 +131,10 @@ class YUJN(Module):
             def api_req():
                 resp = httpx.get(video_url, timeout=5, follow_redirects=True)
                 resp.raise_for_status()
-                data = base64.b64encode(resp.content).decode("utf-8")
-                return f"base64://{data}"
-            data = self.retry(api_req)
-            result = self.reply(f"[CQ:video,file={data}]")
+                b64 = base64.b64encode(resp.content).decode("utf-8")
+                return f"base64://{b64}"
+            b64 = self.retry(api_req)
+            result = self.reply(f"[CQ:video,file={b64}]")
             if not status_ok(result):
                 self.reply("视频失效了~请再试一次吧~")
         except Exception as e:
@@ -155,10 +155,10 @@ class YUJN(Module):
             def api_req():
                 resp = httpx.get(voice_url, timeout=5, follow_redirects=True)
                 resp.raise_for_status()
-                data = base64.b64encode(resp.content).decode("utf-8")
-                return f"base64://{data}"
-            data = self.retry(api_req)
-            self.reply(f"[CQ:record,file={data}]")
+                b64 = base64.b64encode(resp.content).decode("utf-8")
+                return f"base64://{b64}"
+            b64 = self.retry(api_req)
+            self.reply(f"[CQ:record,file={b64}]")
         except Exception as e:
             self.errorf(traceback.format_exc())
             self.errorf(f"遇见API请求失败: {e}")

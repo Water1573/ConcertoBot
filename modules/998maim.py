@@ -166,11 +166,10 @@ class Maim(Module):
         except Exception as e:
             self.errorf(f"处理命令时发生错误: {e}")
             return None
-
         if status_ok(info):
             self.printf(f"命令 {command} 执行成功")
         else:
-            self.warnf(f"命令 {command} 执行失败，napcat返回: {info}")
+            self.warnf(f"命令 {command} 执行失败: {info}")
 
     async def send_message(self, message_base: MessageBase) -> None:
         """处理消息发送"""
@@ -200,7 +199,7 @@ class Maim(Module):
         else:
             self.errorf("无法识别的消息类型")
             return
-        if len(msg) > 100:
+        if len(msg) > 100 and "CQ:" not in msg:
             source = msg.split("\n")[0]
             if msg_type == "group":
                 info = send_forward_msg(self.robot, self.node(msg), group_id=target_id, source=source)

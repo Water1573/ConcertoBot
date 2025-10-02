@@ -176,9 +176,9 @@ class Ytdlp(Module):
             else:
                 with open(file_path, "rb") as video_file:
                     video_bytes = video_file.read()
-                    base64_bytes = base64.b64encode(video_bytes)
-                    base64_string = base64_bytes.decode("utf-8")
-                    msg = f"[CQ:video,file=base64://{base64_string}]"
+                    b64_bytes = base64.b64encode(video_bytes)
+                    b64 = b64_bytes.decode("utf-8")
+                    msg = f"[CQ:video,file=base64://{b64}]"
                     self.reply(msg)
         except LoadError:
             # http://fileformats.archiveteam.org/wiki/Netscape_cookies.txt

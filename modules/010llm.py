@@ -2,10 +2,11 @@
 
 import json
 import http.client
+import traceback
 from urllib.parse import urlparse
 from typing import Dict, List, AsyncGenerator, Generator, Union
 
-import aiohttp
+import httpx
 
 from src.utils import Module
 
@@ -16,30 +17,62 @@ class LLM(Module):
     NAME = "LLM模块"
     HELP = {} # 本模块目前主要为内部其他模块和功能提供LLM接入能力
     GLOBAL_CONFIG = {
-        "providers": [],
-        "models": [],
+        "providers": [
+            {
+                "name": "DeepSeek",
+                "base_url": "https://api.deepseek.com",
+                "api_key": "",
+                "max_retry": 2,
+                "timeout": 30,
+                "retry_interval": 10
+            }
+        ],
+        "models": [
+            {
+                "type": "chat",
+                "model_identifier": "deepseek-chat",
+                "name": "deepseek",
+                "provider": "DeepSeek"
+            }
+        ],
+        "system_prompt": None,
     }
     CONV_CONFIG = None
     AUTO_INIT = True
 
     def __init__(self, event, auth=0):
         super().__init__(event, auth)
-        self.session = None
         if "LLM" not in self.robot.func:
-            self.robot.func["llm_chat"] = self.llm_chat
-            self.robot.func["async_llm_chat"] = self.async_llm_chat
+            self.robot.func["LLM"] = lambda: None
+            try:
+                model = self.get_request_params(model_type="chat")
+                self.printf(f"已载入模型[{model["name"]}]")
+                self.robot.func["llm_chat"] = self.llm_chat
+                self.robot.func["async_llm_chat"] = self.async_llm_chat
+            except Exception as e:
+                self.warnf(f"未配置聊天模型，全局函数不可用 {e}")
+            try:
+                model = self.get_request_params(model_type="stt")
+                self.printf(f"已载入模型[{model["name"]}]")
+                self.robot.func["llm_stt"] = self.llm_stt
+            except Exception as e:
+                self.warnf(f"未配置STT模型，全局函数不可用 {e}")
+            try:
+                model = self.get_request_params(model_type="tts")
+                self.printf(f"已载入模型[{model["name"]}]")
+                self.robot.func["llm_tts"] = self.llm_tts
+            except Exception as e:
+                self.warnf(f"未配置TTS模型，全局函数不可用 {e}")
 
     def premise(self):
         return False
 
-    async def __aexit__(self, exc_type, exc_value, traceback):
-        """异步上下文管理器退出时关闭资源"""
-        await self.close()
-
-    def build_model_map(self) -> Dict[str, Dict]:
+    def build_model_map(self, model_type: str = "chat") -> Dict[str, Dict]:
         """构建模型名称到配置的映射"""
         model_map = {}
         for model in self.config["models"]:
+            if model["type"] != model_type:
+                continue
             provider = next(
                 (p for p in self.config["providers"] if p["name"] == model["provider"]),
                 None
@@ -51,9 +84,9 @@ class LLM(Module):
                 }
         return model_map
 
-    def get_request_params(self, model_name: str | None = None) -> Dict:
+    def get_request_params(self, model_name: str | None = None, model_type: str = "chat") -> Dict:
         """获取请求参数"""
-        model_map = self.build_model_map()
+        model_map = self.build_model_map(model_type)
         if len(model_map) == 0:
             raise ValueError("未找到任何可用模型!")
         if model_name:
@@ -65,6 +98,7 @@ class LLM(Module):
         provider = model_info["provider_config"]
 
         return {
+            "name": model_name,
             "model": model_info["model_identifier"],
             "base_url": provider["base_url"],
             "api_key": provider["api_key"],
@@ -73,138 +107,131 @@ class LLM(Module):
             "retry_interval": provider.get("retry_interval", 10)
         }
 
-    def make_sync_request(self, messages: List[Dict], params: Dict, stream: bool = False) -> Union[Dict, Generator]:
-        """同步API请求核心逻辑"""
-        parsed_url = urlparse(params["base_url"])
-        is_https = parsed_url.scheme == "https"
-        conn_class = http.client.HTTPSConnection if is_https else http.client.HTTPConnection
-        conn = conn_class(parsed_url.netloc, timeout=params["timeout"])
-
-        headers = {
+    def build_headers(self, api_key: str, stream: bool) -> Dict[str, str]:
+        return {
             "Content-Type": "application/json",
-            "Authorization": f"Bearer {params['api_key']}",
+            "Authorization": f"Bearer {api_key}",
             "Accept": "text/event-stream" if stream else "application/json"
         }
-        body = {
-            "model": params["model"],
-            "messages": messages,
-            "stream": stream
-        }
-        conn.request("POST", "/v1/chat/completions", body=json.dumps(body), headers=headers)
-        response = conn.getresponse()
-        if response.status != 200:
-            raise http.client.HTTPException(f"API请求失败: {response.status} {response.reason}")
-        if stream:
-            return self.handle_stream_response(response)
-        else:
-            data = json.loads(response.read().decode())
-            return data["choices"][0]["message"]["content"]
 
-    def handle_stream_response(self, response: http.client.HTTPResponse) -> Generator:
-        """处理流式响应"""
-        buffer = b""
-        while True:
-            chunk = response.read(1024)
-            if not chunk:
-                break
-            buffer += chunk
+    def build_payload(self, messages: List[Dict], model: str, stream: bool) -> Dict:
+        return {"model": model, "messages": messages, "stream": stream}
 
-            while b'\n\n' in buffer:
-                event, buffer = buffer.split(b'\n\n', 1)
-                if event.startswith(b"data: "):
-                    data = event[6:].decode().strip()
-                    if data == "[DONE]":
-                        return
-                    try:
-                        item = json.loads(data)
-                        yield item.get("choices", [{}])[0].get("delta", {}).get("content", "")
-                    except json.JSONDecodeError:
-                        continue
-
-    async def make_async_request(self, messages: List[Dict], params: Dict, stream: bool = False) -> Union[Dict, AsyncGenerator]:
-        """异步API请求核心逻辑"""
-        if self.session is None:
-            self.session = aiohttp.ClientSession()
-
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {params['api_key']}",
-            "Accept": "text/event-stream" if stream else "application/json"
-        }
-        body = {
-            "model": params["model"],
-            "messages": messages,
-            "stream": stream
-        }
-        async with self.session.post(
-            f"{params['base_url']}/v1/chat/completions",
-            headers=headers,
-            json=body,
-            timeout=params["timeout"]
-        ) as response:
-            if response.status != 200:
-                error = await response.text()
-                raise http.client.HTTPException(f"API请求失败: {response.status} {error}")
-
-            if stream:
-                return self.handle_async_stream(response)
-            else:
-                return await response.json()
-
-    async def handle_async_stream(self, response: aiohttp.ClientResponse) -> AsyncGenerator:
-        """处理异步流式响应"""
-        buffer = b""
-        async for chunk in response.content.iter_any():
-            buffer += chunk
-            while b'\n\n' in buffer:
-                event, buffer = buffer.split(b'\n\n', 1)
-                if event.startswith(b"data: "):
-                    data = event[6:].decode().strip()
-                    if data == "[DONE]":
-                        return
-                    try:
-                        yield json.loads(data)
-                    except json.JSONDecodeError:
-                        continue
-
-    def llm_chat(
-        self,
-        msg: str,
-        model_name: str = None,
-        stream: bool = False
-    ) -> Union[Dict, Generator]:
-        """同步生成文本"""
+    def parse_event(self, data: str) -> str:
+        """解析单个 SSE 事件"""
+        if data == "[DONE]":
+            return None
         try:
-            messages: List[Dict] = [{"role": "user", "content": msg}]
-            system_prompt = self.config["system_prompt"]
-            if system_prompt:
-                messages = [{"role": "system", "content": self.config["system_prompt"]}, *messages]
-            params = self.get_request_params(model_name)
-            return self.make_sync_request(messages, params, stream)
-        except Exception as e:
-            self.errorf(f"LLM请求失败: {e}")
+            item = json.loads(data)
+            return item["choices"][0]["delta"]["content"]
+        except json.JSONDecodeError:
             return None
 
-    async def async_llm_chat(
-        self,
-        msg: str,
-        model_name: str = None,
-        stream: bool = False
-    ) -> Union[Dict, AsyncGenerator]:
+    def sync_chat(self, messages: List[Dict], params: Dict, stream: bool = False) -> Union[Dict, Generator]:
+        """同步API请求核心逻辑"""
+        headers = self.build_headers(params["api_key"], stream)
+        payload = self.build_payload(messages, params["model"], stream)
+        url = f"{params['base_url']}/chat/completions"
+        if not stream:
+            response = httpx.post(url, headers=headers, json=payload, timeout=params["timeout"])
+            response.raise_for_status()
+            data = response.json()
+            return data["choices"][0]["message"]["content"]
+
+        def generator():
+            with httpx.stream("POST", url, headers=headers, json=payload, timeout=params["timeout"]) as response:
+                response.raise_for_status()
+                for line in response.iter_lines():
+                    if line.startswith("data: "):
+                        content = self.parse_event(line[6:].strip())
+                        if content is None:
+                            return
+                        yield content
+        return generator()
+
+    async def async_chat(self, messages: List[Dict], params: Dict, stream: bool = False) -> Union[Dict, AsyncGenerator]:
+        """异步API请求核心逻辑"""
+        headers = self.build_headers(params["api_key"], stream)
+        payload = self.build_payload(messages, params["model"], stream)
+        url = f"{params['base_url']}/chat/completions"
+        if not stream:
+            response = httpx.AsyncClient().post(url, headers=headers, json=payload, timeout=params["timeout"])
+            response.raise_for_status()
+            data = await response.json()
+            return data["choices"][0]["message"]["content"]
+
+        async def generator():
+            async with httpx.AsyncClient().stream("POST", url, headers=headers, json=payload, timeout=params["timeout"]) as response:
+                response.raise_for_status()
+                async for line in response.iter_lines():
+                    if line.startswith("data: "):
+                        content = self.parse_event(line[6:].strip())
+                        if content is None:
+                            return
+                        yield content
+        return generator()
+
+    def llm_chat(self, msg: str, model_name: str = None, stream: bool = False) -> Union[str, Generator]:
+        """同步生成文本"""
+        try: 
+            messages: List[Dict] = [{"role": "user", "content": msg}]
+            if system_prompt := self.config["system_prompt"]:
+                messages = [{"role": "system", "content": system_prompt}, *messages]
+            params = self.get_request_params(model_name)
+            return self.sync_chat(messages, params, stream)
+        except Exception:
+            self.errorf(f"LLM请求失败: {traceback.print_exc()}")
+            return ""
+
+    async def async_llm_chat(self, msg: str, model_name: str = None, stream: bool = False) -> Union[str, AsyncGenerator]:
         """异步生成文本"""
         try:
             messages: List[Dict] = [{"role": "user", "content": msg}]
-            system_prompt = self.config["system_prompt"]
-            if system_prompt:
-                messages = [{"role": "system", "content": self.config["system_prompt"]}, *messages]
+            if system_prompt := self.config["system_prompt"]:
+                messages = [{"role": "system", "content": system_prompt}, *messages]
             params = self.get_request_params(model_name)
-            return await self.make_async_request(messages, params, stream)
-        except Exception as e:
-            self.errorf(f"LLM请求失败: {e}")
-            return None
+            self.printf(f"调用chat模型 {params["payload"]}")
+            return await self.async_chat(messages, params, stream)
+        except Exception:
+            self.errorf(f"LLM请求失败: {traceback.print_exc()}")
+            return ""
 
-    async def close(self):
-        """异步关闭资源"""
-        if self.session:
-            await self.session.close()
-            self.session = None
+    def llm_stt(self, file: dict, model_name: str = None) -> str:
+        """同步语音转文本"""
+        try:
+            params = self.get_request_params(model_name, "stt")
+            url = f"{params["base_url"]}/audio/transcriptions"
+            headers = {"Authorization": f"Bearer {params["api_key"]}"}
+            payload = {"model": params["model"]}
+            self.printf(f"调用stt模型 {payload}")
+            response = httpx.post(url, data=payload, files=file, headers=headers, timeout=params["timeout"])
+            data = response.json()
+            return data.get("text") or data.get("message")
+        except Exception as e:
+            traceback.print_exc()
+            self.errorf(f"LLM请求失败: {e}")
+            return ""
+
+    def llm_tts(self, text: str, model_name: str = None) -> bytes | str:
+        """同步文本转语音"""
+        try:
+            params = self.get_request_params(model_name, "tts")
+            url = f"{params["base_url"]}/audio/speech"
+            headers = {"Authorization": f"Bearer {params["api_key"]}"}
+            payload = {
+                "model": params["model"],
+                "input": text,
+                "response_format": "mp3",
+                "voice": "fishaudio/fish-speech-1.4:claire",
+            }
+            self.printf(f"调用tts模型 {payload}")
+            response = httpx.post(url, json=payload, headers=headers, timeout=params["timeout"])
+            if response.status_code == 200:
+                return response.content
+            if response.text.startswith("{"):
+                return response.json()["message"]
+            return response.text
+        except Exception as e:
+            traceback.print_exc()
+            self.errorf(f"LLM请求失败: {e}")
+            return ""

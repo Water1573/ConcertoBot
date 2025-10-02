@@ -168,35 +168,44 @@ class Picture(Module):
             return self.reply("解析API响应失败", reply=True)
 
     @via(lambda self: self.au(2) and self.at_or_private()
-         and self.match(r"^我?(要|来|发|看|给|有没有){0,2}?(更|超|超级|很|再|无敌|最强){0,3}?(来|发|看|给|瑟|涩|色|se)\S{0,5}(图|瑟|涩|色|se|好看|好康|可爱)的?"))
+         and self.match(r"^我?(要|来|发|看|给|有没有){0,3}?(更|超|超级|很|再|无敌|最强){0,3}?(来|发|看|给|瑟|涩|色|se)\S{0,10}(图|瑟|涩|色|se|好看|好康|可爱)的?"))
     def lolicon(self):
         tags = []
         r18_mode = 0
         if len(self.event.text.split(" ")) > 1:
             tags = self.event.text.split(" ")[1:]
+        if len(tags) == 0 and self.match(r"[张|个](\S+)的"):
+            tags.append(self.match(r"[张|个](\S+)的").group(1))
         if self.match(r"(更|超|超级|很|再|无敌|最强)"):
             r18_mode = 1
         try:
             url = ""
             if not self.is_private():
                 set_emoji(self.robot, self.event.msg_id, 124)
-            self.printf("正在使用Lolicon API获取图片...")
-            data = self.retry(lambda: self.get_lolicon_image(r18_mode, tags))
+            self.printf(f"正在使用Lolicon API获取图片...{tags}")
+            data = self.retry(lambda: self.get_lolicon_image(r18_mode, tags=tags))
             self.printf(f"Lolicon API返回结果:\n{data}", level="DEBUG")
             if data:
                 author = f"{data["author"]}(uid: {data["uid"]})"
                 title = f"{data["title"]}(pid: {data["pid"]})"
-                url = data.get("urls", {}).get("original")
-                url = self.get_img_url(url)
+                tags = ", ".join(data["tags"])
+                url = data.get("urls", {}).get("url")
                 if data["r18"]:
+                    nodes = []
                     msg = f"来自画师{author}的作品: {title}\n{url}"
-                    self.reply_forward([self.node("NSFW"), self.node(msg)], data["title"], "Pixiv")
+                    nodes.append(self.node("NSFW"))
+                    nodes.append(self.node(msg))
+                    nodes.append(self.node(tags))
+                    self.reply_forward(nodes, data["title"], "Pixiv")
                 else:
+                    nodes = []
                     msg = f"来自画师{author}的作品: {title}\n{url}"
-                    self.reply_forward(self.node(msg), data["title"], "Pixiv")
+                    nodes.append(self.node(msg))
+                    nodes.append(self.node(tags))
+                    self.reply_forward(nodes, data["title"], "Pixiv")
                     self.reply(f"[CQ:image,file={url}]")
             else:
-                return self.reply("未找到该标签的图片")
+                return self.reply(f"未找到标签[{tags}]的图片", reply=True)
         except Exception as e:
             self.errorf(traceback.format_exc())
             self.reply(f"Lolicon API调用失败! {e}", reply=True)
@@ -347,8 +356,8 @@ class Picture(Module):
         try:
             predict_url = self.config.get("real_cugan_url")
             model_name = f"up{scale}x-latest-{con}.pth"
-            base64_str = base64.b64encode(img).decode("utf-8")
-            encoded_image = f"data:image/jpeg;base64,{base64_str}"
+            b64 = base64.b64encode(img).decode("utf-8")
+            encoded_image = f"data:image/jpeg;base64,{b64}"
             payload = {"data": [encoded_image, model_name, 2]}
             headers = {"Content-Type": "application/json"}
             response = httpx.post(
@@ -381,9 +390,13 @@ class Picture(Module):
         self.printf(f"调用LoliconAPI({url})返回结果：{data}", level="DEBUG")
         if data.get("data") == []:
             return None
-        else:
-            img = data["data"][0]
-            return img
+        original_url = data.get("data")[0].get("urls", {}).get("original")
+        qq_url = self.get_img_url(original_url)
+        if url == qq_url:
+            raise Exception("尝试多次，图片链接均已失效，请重新获取")
+        data["data"][0]["urls"]["url"] = qq_url
+        img = data["data"][0]
+        return img
 
     def search_image_saucenao(self, image_url: str, proxies: str = None) -> Tuple[bool, str | list]:
         """
@@ -532,8 +545,13 @@ class Picture(Module):
             if page == 0 and page_num > 0:
                 for i in range(1, page_num + 1):
                     data += await self.get_jiandan(current_page - i)
-            data = sorted(data, key=lambda x: x["vote_positive"]-x["vote_negative"])
-            data = [i for i in data if i["vote_positive"]>i["vote_negative"] and i["vote_positive"] > 0]
+            data = sorted(data, key=lambda x: x["vote_positive"]-x["vote_negative"], reverse=True)
+            result = []
+            for item in data:
+                if (item["vote_positive"] > item["vote_negative"]
+                    and item["vote_positive"] > 0
+                    and item["vote_positive"] < 1000):
+                    result.append(item)
             self.printf(f"共请求到{len(data)}条有效的帖子")
             return data
         except Exception as e:

@@ -11,12 +11,12 @@ import httpx
 if TYPE_CHECKING:
     from robot import Concerto
 
-def get(robot: "Concerto", url):
+def get(robot: "Concerto", url, timeout=60):
     """GET请求"""
     try:
         get_url = robot.config.api_base + url
         robot.request_list.append(f"GET{url}")
-        data = httpx.get(get_url, timeout=60)
+        data = httpx.get(get_url, timeout=timeout)
         rev_json = data.json()
         robot.printf(f"{Fore.YELLOW}[DATA]{Fore.RESET} GET请求{Fore.MAGENTA}[{get_url}]{Fore.RESET}后返回{Fore.YELLOW}{rev_json}{Fore.RESET}", level="DEBUG")
         return rev_json
@@ -27,14 +27,14 @@ def get(robot: "Concerto", url):
         robot.errorf("无效的请求地址！")
         return {}
 
-def post(robot: "Concerto", url, data):
+def post(robot: "Concerto", url, data, timeout=60):
     """POST请求"""
     try:
         data = json.dumps(data, ensure_ascii=False).encode("utf-8")
         post_url = robot.config.api_base + url
         robot.request_list.append(f"POST{url} | {data}")
         header = {"Content-Type": "application/json"}
-        data = httpx.post(post_url, headers=header, data=data, timeout=60)
+        data = httpx.post(post_url, headers=header, data=data, timeout=timeout)
         rev_json = data.json()
         robot.printf(f"{Fore.YELLOW}[DATA]{Fore.RESET} POST请求{Fore.MAGENTA}[{post_url}]{Fore.RESET}后返回{Fore.YELLOW}{rev_json}{Fore.RESET}", level="DEBUG")
         return rev_json
@@ -100,7 +100,7 @@ def get_image(robot: "Concerto", resp: dict):
 
 def get_record(robot: "Concerto", resp: dict):
     url = "/get_record"
-    return post(robot, url, resp)
+    return post(robot, url, resp, timeout=5)
 
 def handle_quick_operation(robot: "Concerto", resp: dict):
     context = resp["context"]  # 事件数据对象

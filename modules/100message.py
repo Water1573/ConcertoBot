@@ -1,12 +1,13 @@
 """机器人基础消息处理模块"""
 
+import base64
 import os
 import time
 
 from colorama import Fore
 import httpx
 from src.api import del_msg, get_version_info, send_msg
-from src.utils import Module, get_group_name, get_user_name, send_group_ai_record, import_json, status_ok, via
+from src.utils import Module, get_group_name, get_user_name, reply_id, send_group_ai_record, import_json, status_ok, via
 
 
 class Message(Module):
@@ -260,14 +261,29 @@ class Message(Module):
             msg = f"测试{thing}OK!"
         self.reply(msg)
 
-    @via(lambda self: self.at_or_private() and self.au(2) and self.match(r"^(语音|读)\s?\S*"))
+    @via(lambda self: self.at_or_private() and self.au(2) and self.match(r"(语音|读)\s?(.*)"))
     def voice(self):
         text = "后面加上需要让我读出来的字嘛"
-        if self.match(r"(语音|读)\s?.*"):
-            text = self.match(r"(语音|读)\s?(.*)").group(2)
-        if self.is_private():
+        match = self.match(r"向?(\d+)?发?送?(语音|读)\s?(.*)")
+        group_id = match.group(1)
+        text = match.group(3)
+        if llm_tts := self.robot.func["llm_tts"]:
+            record = llm_tts(text)
+            if isinstance(record, bytes):
+                b64 = base64.b64encode(record).decode()
+                msg = f"[CQ:record,file=base64://{b64}]"
+            else:
+                msg = record
+            if group_id:
+                result = reply_id(self.robot, "group", group_id, msg)
+            else:
+                result = self.reply(msg)
+        elif not group_id or self.is_private():
             msg = f"[CQ:tts,text={text}]"
-            result = self.reply(msg)
+            if group_id:
+                result = reply_id(self.robot, "group", group_id, msg)
+            else:
+                result = self.reply(msg)
         else:
             result = send_group_ai_record(self.robot, self.event.group_id, "lucy-voice-xueling", text)
         if not status_ok(result):
