@@ -412,6 +412,7 @@ class Maim(Module):
                     seg_message.append(seg)
             msg = msg.replace(cq_code, "", 1)
         if msg:
+            msg  = msg.replace("你收到一个专属红包，请在新版手机QQ查看。", "")
             seg_message.append(Seg(type="text", data=msg))
         return seg_message
 

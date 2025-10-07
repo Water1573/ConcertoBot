@@ -61,7 +61,6 @@ class Picture(Module):
         """初始化定时任务"""
         # 煎蛋无聊图定时任务
         await asyncio.sleep(5)
-        self.printf("初始化定时任务")
         for owner, chat in self.config.items():
             if not re.match(r"[ug]\d+", owner):
                 continue
@@ -235,7 +234,7 @@ class Picture(Module):
 
     @via(lambda self: self.au(2) and self.at_or_private()
          and self.config[self.owner_id].get("image_search")
-         and self.match(r"^(\[.*\])?\s*?(搜索|搜|查询|查|找)(图|图片)\s*?(\[.*\])?$"))
+         and self.match(r"^(\[.*\])?\s*?(搜索|搜|查询|查|找|识)(图|图片)\s*?(\[.*\])?$"))
     def search_image(self):
         url = ""
         if match := self.match(r"\[CQ:image,.*url=([^,\]]+?),.*\]"):
@@ -552,8 +551,8 @@ class Picture(Module):
                     and item["vote_positive"] > 0
                     and item["vote_positive"] < 1000):
                     result.append(item)
-            self.printf(f"共请求到{len(data)}条有效的帖子")
-            return data
+            self.printf(f"共请求到{len(result)}条有效的帖子")
+            return result
         except Exception as e:
             self.errorf(f"获取煎蛋无聊图失败 {traceback.format_exc()}")
             if raise_error:

@@ -197,7 +197,7 @@ class Message(Module):
         self.robot.is_running = False
         self.robot.is_restart = True
 
-    @via(lambda self: self.at_or_private() and self.au(1) and self.match(r"^向?群?([0-9]+)?说\s?\S+$"))
+    @via(lambda self: self.at_or_private() and self.au(1) and self.match(r"说\s(.*)$"))
     def say(self):
         if self.match(r"^向"):
             inputs = self.match(r"([0-9]+)说\s?(\S*)").groups()
@@ -261,7 +261,7 @@ class Message(Module):
             msg = f"测试{thing}OK!"
         self.reply(msg)
 
-    @via(lambda self: self.at_or_private() and self.au(2) and self.match(r"(语音|读)\s?(.*)"))
+    @via(lambda self: self.at_or_private() and self.au(2) and self.match(r"(语音|读)\s(.*)$"))
     def voice(self):
         text = "后面加上需要让我读出来的字嘛"
         match = self.match(r"向?(\d+)?发?送?(语音|读)\s?(.*)")

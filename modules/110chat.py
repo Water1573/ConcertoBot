@@ -1,5 +1,6 @@
 """消息处理模块"""
 
+import asyncio
 import base64
 import datetime
 import html
@@ -19,6 +20,7 @@ from PIL import Image, ImageDraw
 from wordcloud import WordCloud
 
 from src.utils import (
+    MiniCron,
     Module,
     get_error,
     get_group_member_list,
@@ -26,6 +28,7 @@ from src.utils import (
     get_record,
     get_stranger_info,
     get_user_name,
+    reply_back,
     set_emoji,
     status_ok,
     via
@@ -64,8 +67,11 @@ class Chat(Module):
     }
     CONV_CONFIG = {
         "record": {
+            "auto_cron": "",
+            "auto_wordcloud": "",
+            "auto_statistics": "",
             "enable": False,
-            "colormap": "Set3"
+            "colormap": "Set2"
         },
         "repeat_record": {
             "enable": False
@@ -73,6 +79,53 @@ class Chat(Module):
         "users": {}
     }
     HANDLE_MESSAGE_SENT = True
+    AUTO_INIT = True
+
+    def __init__(self, event, auth = 0):
+        super().__init__(event, auth)
+        if self.ID in self.robot.persist_mods:
+            return
+        self.robot.persist_mods[self.ID] = self
+        asyncio.run_coroutine_threadsafe(self.init_task(), self.robot.loop)
+        self.en2cn_dict = {
+            "all": "历史", "today": "今天", "yesterday": "昨天", "before_yesterday": "前天",
+            "this_week": "本周", "last_week": "上周",
+            "this_month": "本月", "last_month": "上个月",
+            "this_year": "今年", "last_year": "去年"
+        }
+
+    async def init_task(self) -> None:
+        """初始化定时任务"""
+        # 词云与发言排行统计定时任务
+        await asyncio.sleep(5)
+        for owner, config in self.config.items():
+            if not re.match(r"[ug]\d+", owner):
+                continue
+            record = config.get("record", {})
+            crontab = record.get("auto_cron")
+            if not crontab:
+                continue
+            cron = MiniCron(crontab, lambda o=owner,c=record: self.scheduled_task(o, c), loop=self.robot.loop)
+            self.printf(f"已为[{owner}]开启词云与发言排行统计定时任务[{crontab}]")
+            asyncio.run_coroutine_threadsafe(cron.run(), self.robot.loop)
+
+    async def scheduled_task(self, owner_id: str, config: dict) -> None:
+        """根据配置发送词云与排行统计"""
+        try:
+            msg = ""
+            if gen_type := config["auto_wordcloud"]:
+                msg = f"{self.en2cn_dict[gen_type]}统计数据\n"
+                rows = self.read_chat(gen_type, owner_id)
+                text = "\n".join([r[3] for r in rows if r[3]])
+                url = self.generate_wordcloud(text)
+                msg += f"[CQ:image,file={url}]"
+            if gen_type := config["auto_statistics"]:
+                rows = self.read_tally(gen_type, owner_id)
+                url = self.generate_statistics(rows)
+                msg += f"[CQ:image,file={url}]"
+            reply_back(self.robot, owner_id, msg)
+        except Exception:
+            self.errorf(f"任务执行失败 {traceback.format_exc()}")
 
     @via(lambda self: self.at_or_private() and self.au(2) and self.match(r"词云"), success=False)
     def wordcloud(self):
@@ -91,34 +144,25 @@ class Chat(Module):
             if self.config[self.owner_id]["record"]["enable"]:
                 gen_type = "all"
                 if self.match(r"(今天|今日|本日|这天)"):
-                    msg = "正在生成今日词云..."
                     gen_type = "today"
                 elif self.match(r"(昨天|昨日)"):
-                    msg = "正在生成昨天词云..."
                     gen_type = "yesterday"
                 elif self.match(r"(前天|前日)"):
-                    msg = "正在生成前天词云..."
                     gen_type = "before_yesterday"
                 elif self.match(r"(本周|这周|此周|这个?礼拜|这个?星期)"):
-                    msg = "正在生成本周词云..."
                     gen_type = "this_week"
                 elif self.match(r"(上周|上个?礼拜|上个?星期)"):
-                    msg = "正在生成上周词云..."
                     gen_type = "last_week"
                 elif self.match(r"(本月|这月|次月|这个月)"):
-                    msg = "正在生成本月词云..."
                     gen_type = "this_month"
                 elif self.match(r"(上个?月)"):
-                    msg = "正在生成上个月词云..."
                     gen_type = "last_month"
                 elif self.match(r"(今年|本年|此年|这一?年)"):
-                    msg = "正在生成今年词云..."
                     gen_type = "this_year"
                 elif self.match(r"(去年|上一?年)"):
-                    msg = "正在生成去年词云..."
                     gen_type = "last_year"
-                else:
-                    msg = "正在生成历史词云..."
+                cn_type = self.en2cn_dict.get(gen_type, "历史")
+                msg = f"正在生成{cn_type}词云..."
                 text = ""
                 user_name = result.group(2)
                 user_id = None
@@ -179,34 +223,25 @@ class Chat(Module):
             if self.config[self.owner_id]["record"]["enable"]:
                 gen_type = "all"
                 if self.match(r"(今天|今日|本日|这天)"):
-                    msg = "正在生成今日发言排行..."
                     gen_type = "today"
                 elif self.match(r"(昨天|昨日)"):
-                    msg = "正在生成昨天发言排行..."
                     gen_type = "yesterday"
                 elif self.match(r"(前天|前日)"):
-                    msg = "正在生成前天发言排行..."
                     gen_type = "before_yesterday"
                 elif self.match(r"(本周|这周|此周|这个?礼拜|这个?星期)"):
-                    msg = "正在生成本周发言排行..."
                     gen_type = "this_week"
                 elif self.match(r"(上周|上个?礼拜|上个?星期)"):
-                    msg = "正在生成上周发言排行..."
                     gen_type = "last_week"
                 elif self.match(r"(本月|这月|次月|这个月)"):
-                    msg = "正在生成本月发言排行..."
                     gen_type = "this_month"
                 elif self.match(r"(上个?月)"):
-                    msg = "正在生成上个月发言排行..."
                     gen_type = "last_month"
                 elif self.match(r"(今年|本年|此年|这一?年)"):
-                    msg = "正在生成今年发言排行..."
                     gen_type = "this_year"
                 elif self.match(r"(去年|上一?年)"):
-                    msg = "正在生成去年发言排行..."
                     gen_type = "last_year"
-                else:
-                    msg = "正在生成历史发言排行..."
+                cn_type = self.en2cn_dict.get(gen_type, "历史")
+                msg = f"正在生成{cn_type}发言排行..."
                 rows = []
                 count = 0
                 user_name = result.group(2)
@@ -532,7 +567,7 @@ class Chat(Module):
         except Exception:
             self.errorf("保存消息记录失败:\n" + traceback.format_exc())
 
-    def read_tally(self, gen_type: str, owner_id: str, user_id: str = None):
+    def read_tally(self, gen_type: str, owner_id: str, user_id: str = None) -> list:
         """读取当前会话下的所有消息的计数
         gen_type 可选：today, yesterday, before_yesterday, this_week,
         last_week, this_month, last_month, this_year, last_year, all
@@ -569,7 +604,7 @@ class Chat(Module):
             return rows
         except Exception:
             self.errorf(traceback.format_exc())
-            return ""
+            return
 
     def store_chat(self, owner_id: str, user_id: str, text: str):
         """将单条聊天记录按 (owner_id, user_id, date) 合并写入数据库"""
@@ -603,7 +638,7 @@ class Chat(Module):
         except Exception:
             self.errorf("保存消息记录失败:\n" + traceback.format_exc())
 
-    def read_chat(self, gen_type: str, owner_id: str, user_id: str = None):
+    def read_chat(self, gen_type: str, owner_id: str, user_id: str = None) -> list:
         """读取当前会话下的所有消息并拼接为字符串返回
         gen_type 可选：today, yesterday, before_yesterday, this_week,
         last_week, this_month, last_month, this_year, last_year, all
