@@ -82,17 +82,17 @@ class Chat(Module):
     AUTO_INIT = True
 
     def __init__(self, event, auth = 0):
-        super().__init__(event, auth)
-        if self.ID in self.robot.persist_mods:
-            return
-        self.robot.persist_mods[self.ID] = self
-        asyncio.run_coroutine_threadsafe(self.init_task(), self.robot.loop)
         self.en2cn_dict = {
             "all": "历史", "today": "今天", "yesterday": "昨天", "before_yesterday": "前天",
             "this_week": "本周", "last_week": "上周",
             "this_month": "本月", "last_month": "上个月",
             "this_year": "今年", "last_year": "去年"
         }
+        super().__init__(event, auth)
+        if self.ID in self.robot.persist_mods:
+            return
+        self.robot.persist_mods[self.ID] = self
+        asyncio.run_coroutine_threadsafe(self.init_task(), self.robot.loop)
 
     async def init_task(self) -> None:
         """初始化定时任务"""
@@ -484,6 +484,7 @@ class Chat(Module):
         self.count_chat(self.owner_id, self.event.user_id, self.event.text)
         msg = re.sub(r"(\[|【|{)[\s\S]*(\]|】|})", "", self.event.text)
         msg = re.sub(r"http[s]?://\S+", "", msg)
+        msg = re.sub(r"(.+?)\1{2,}", r"\1", msg)
         self.store_chat(self.owner_id, self.event.user_id, msg)
 
     @via(lambda self: self.config[self.owner_id]["repeat_record"]["enable"]

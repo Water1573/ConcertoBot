@@ -1,7 +1,9 @@
 """抖音视频模块"""
 
 import re
+import time
 import traceback
+from typing import Any, Callable
 from urllib.parse import quote
 
 import httpx
@@ -39,10 +41,7 @@ class Tiktok(Module):
         try:
             if not self.is_private():
                 set_emoji(self.robot, self.event.msg_id, 124)
-            api_url = f"https://api.pearktrue.cn/api/video/douyin/?url={quote(url)}"
-            resp = httpx.get(api_url, timeout=10, follow_redirects=True)
-            resp.raise_for_status()
-            data = resp.json()
+            data = self.retry(lambda url=url: self.get_info(url))
             if data.get("code") != 200:
                 self.reply(f"抖音视频解析失败，错误信息：{data.get("msg", "未知错误")}", reply=True)
                 return
@@ -53,3 +52,29 @@ class Tiktok(Module):
         except Exception as e:
             self.errorf(traceback.format_exc())
             return self.reply_forward(self.node(f"{e}"), source="抖音视频处理失败")
+
+    def get_info(self, url: str) -> dict:
+        """获取视频信息"""
+        api_url = f"https://api.pearktrue.cn/api/video/douyin/?url={quote(url)}"
+        resp = httpx.get(api_url, timeout=10, follow_redirects=True)
+        resp.raise_for_status()
+        data = resp.json()
+        return data
+
+    def retry(self, func: Callable[..., Any], name="", max_retries=5, delay=1, failed_ok=True) -> Any:
+        """多次尝试执行"""
+        for attempt in range(1, max_retries + 1):
+            try:
+                result = func()
+                return result
+            except Exception as e:
+                func_name = name if name else func.__name__
+                self.printf(f"第 {attempt} 次执行 {func_name} 失败: {e}")
+                if attempt == max_retries:
+                    if failed_ok:
+                        return None
+                    raise
+                else:
+                    self.printf(f"{delay} 秒后重试...")
+                    time.sleep(delay)
+
