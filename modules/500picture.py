@@ -15,7 +15,7 @@ from urllib.parse import quote
 import httpx
 from PIL import Image
 
-from src.utils import MiniCron, Module, calc_time, get_msg, reply_back, send_msg, set_emoji, status_ok, via
+from src.utils import MiniCron, Module, calc_time, get_img_url, get_msg, reply_back, send_msg, set_emoji, status_ok, via
 
 class Picture(Module):
     """图片处理模块"""
@@ -182,7 +182,7 @@ class Picture(Module):
             if not self.is_private():
                 set_emoji(self.robot, self.event.msg_id, 124)
             self.printf(f"正在使用Lolicon API获取图片...{tags}")
-            data = self.retry(lambda: self.get_lolicon_image(r18_mode, tags=tags))
+            data = self.retry(lambda: self.get_lolicon_image(r18_mode, tags))
             self.printf(f"Lolicon API返回结果:\n{data}", level="DEBUG")
             if data:
                 author = f"{data["author"]}(uid: {data["uid"]})"
@@ -373,15 +373,15 @@ class Picture(Module):
         except Exception as e:
             raise RuntimeError(f"群星之路被遮蔽，星辉无法汇聚: {str(e)}") from e
 
-    def get_lolicon_image(self, r18: int = 0, ai: bool = False, tags: list = None) -> dict | None:
+    def get_lolicon_image(self, r18: int = 0, tags: list = None, ai: bool = False) -> dict | None:
         """
         获取LoliconAPI图片
         :param r18: 是否获取R18图片
-        :param ai: 是否包含ai图片
         :param tags: 需要筛选的标签
+        :param ai: 是否包含ai图片
         :return: 图片链接
         """
-        url = f"https://api.lolicon.app/setu/v2?excludeAI={not ai}&r18={r18}&proxy=i.pximg.org"
+        url = f"https://api.lolicon.app/setu/v2?r18={r18}&excludeAI={not ai}&proxy=i.pximg.org"
         for tag in tags or []:
             url += f"&tag={quote(tag)}"
         resp = httpx.get(url, timeout=5)
@@ -390,7 +390,7 @@ class Picture(Module):
         if data.get("data") == []:
             return None
         original_url = data.get("data")[0].get("urls", {}).get("original")
-        qq_url = self.get_img_url(original_url)
+        qq_url = get_img_url(self.robot, original_url)
         if url == qq_url:
             raise Exception("尝试多次，图片链接均已失效，请重新获取")
         data["data"][0]["urls"]["url"] = qq_url
@@ -558,25 +558,6 @@ class Picture(Module):
             if raise_error:
                 raise e
             return []
-
-    def get_img_url(self, url: str) -> str:
-        """获取QQ链接"""
-        try:
-            self.printf(f"获取QQ图片链接...url={url}")
-            result = send_msg(self.robot, "private", self.robot.self_id, f"[CQ:image,file={url}]")
-            if not status_ok(result):
-                return url
-            msg_id = result.get("data").get("message_id")
-            result = get_msg(self.robot, msg_id)
-            if not status_ok(result):
-                return url
-            msg =  html.unescape(result.get("data").get("message"))
-            if match := re.search(r"\[CQ:image,.*url=([^,\]]+?),.*\]", msg):
-                url = match.group(1)
-            return url
-        except Exception:
-            self.errorf(f"获取腾讯图床链接失败 {traceback.format_exc()}")
-            return url
 
     def retry(self, func: Callable[..., Any], name="", max_retries=3, delay=1, failed_ok=False) -> Any:
         """多次尝试执行"""

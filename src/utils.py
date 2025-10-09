@@ -866,6 +866,26 @@ def ocr_image(robot: "Concerto", img_id: str):
     resp_dict = {"image": img_id}
     return ocr_image(robot, resp_dict)
 
+
+def get_img_url(robot: "Concerto", url: str) -> str:
+    """获取QQ链接"""
+    try:
+        robot.printf(f"获取QQ图片链接...url={url}")
+        result = send_msg(robot, "private", robot.self_id, f"[CQ:image,file={url}]")
+        if not status_ok(result):
+            return url
+        msg_id = result.get("data").get("message_id")
+        result = get_msg(robot, msg_id)
+        if not status_ok(result):
+            return url
+        msg =  html.unescape(result.get("data").get("message"))
+        if match := re.search(r"\[CQ:image,.*url=([^,\]]+?),.*\]", msg):
+            url = match.group(1)
+        return url
+    except Exception:
+        robot.errorf(f"获取腾讯图床链接失败 {traceback.format_exc()}")
+        return url
+
 def simplify_traceback(tb: str):
     """
     获取错误报告并简化
@@ -1261,9 +1281,9 @@ class Module:
     def reply_forward(self, nodes: list, source=None, summary=None):
         """快捷回复转发消息"""
         if self.event.group_id:
-            send_forward_msg(self.robot, nodes, group_id=self.event.group_id, source=source, summary=summary)
+            return send_forward_msg(self.robot, nodes, group_id=self.event.group_id, source=source, summary=summary)
         else:
-            send_forward_msg(self.robot, nodes, user_id=self.event.user_id, source=source, summary=summary)
+            return send_forward_msg(self.robot, nodes, user_id=self.event.user_id, source=source, summary=summary)
 
     def get_reply(self, ) -> str | None:
         """读取可能存在的回复消息"""
