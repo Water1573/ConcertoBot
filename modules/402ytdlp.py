@@ -51,8 +51,8 @@ class Ytdlp(Module):
     }
 
     def __init__(self, event, auth = 0):
-        # self.video_pattern = r"(https?://[^\s@&;,\"]*(b23.tv|bilibili.com/video|youtu.be|youtube.com|v.qq.com|douyin.com|tiktok.com)[^\s@&;,\"]*)"
-        self.video_pattern = r"(https?://[^\s@&;,\"]*(b23.tv|bilibili.com/video|youtu.be|youtube.com|v.qq.com)[^\s@&;,\"]*)"
+        # self.video_pattern = r"(https?://[^\s\[@&;,\"]*(b23.tv|bilibili.com/video|youtu.be|youtube.com|v.qq.com|douyin.com|tiktok.com)[^\s\[@&;,\"]*)"
+        self.video_pattern = r"(https?://[^\s\[@&;,\"]*(b23.tv|bilibili.com/video|youtu.be|youtube.com|v.qq.com)[^\s\[@&;,\"]*)"
         super().__init__(event, auth)
 
     @via(lambda self: self.at_or_private() and self.au(2)
@@ -112,7 +112,7 @@ class Ytdlp(Module):
                 set_emoji(self.robot, self.event.msg_id, 124)
             info = self.get_info(url, opts)
             if not info:
-                return self.reply("请求失败或不支持的视频链接!", reply=True)
+                return self.reply("请求失败或不支持的链接!", reply=True)
             elif info.get("type") == "playlist" and ("bilibili.com" in url or "b23.tv" in url):
                 url = info["url"] + "?p=1"
             elif info.get("type") == "playlist":
@@ -156,7 +156,7 @@ class Ytdlp(Module):
             else:
                 set_emoji(self.robot, self.event.msg_id, 60)
             ext = self.config["ydl"]["merge_output_format"]
-            true_path = Path(self.download_video(url, opts)).as_posix()
+            true_path = Path(self.download_video(url, opts)).as_posix() + f".{ext}"
             file_path = true_path
             if not os.path.exists(file_path):
                 file_path = f"{file_path}.{ext}"
@@ -165,8 +165,18 @@ class Ytdlp(Module):
             video_name = file_path.split("/").pop()
             file_size = os.path.getsize(file_path)
             self.printf(f"视频{video_name}下载完成，大小{calc_size(file_size)}")
-            if file_size > 100 * 1024 * 1024:
-                return self.reply(f"视频{url}过大({calc_size(file_size)})，上传失败，还是去APP观看吧~", reply=True)
+            if file_size > 100 * 1024 * 1024 and opts["format"] != "wv+ba/w":
+                self.reply(f"视频体积太大({calc_size(file_size)})，尝试使用最低画质下载~", reply=True)
+                # 视频大小太大则尝试使用最低画质下载
+                os.remove(true_path)
+                opts["format"] = "wv+ba/w"
+                self.download_video(url, opts)
+                file_size = os.path.getsize(file_path)
+                if file_size > 100 * 1024 * 1024:
+                    # 视频大小依然太大则上传失败
+                    return self.reply(f"视频体积太大({calc_size(file_size)})，上传失败~", reply=True)
+            elif file_size > 100 * 1024 * 1024:
+                return self.reply(f"视频体积太大({calc_size(file_size)})，上传失败~", reply=True)
             if not self.is_private():
                 set_emoji(self.robot, self.event.msg_id, 66)
             if video_path := self.config["video_path"]:

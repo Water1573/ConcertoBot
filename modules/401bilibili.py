@@ -2,6 +2,7 @@
 
 import asyncio
 import base64
+import json
 import random
 import re
 import time
@@ -61,8 +62,9 @@ class Bilibili(Module):
             "DYNAMIC_TYPE_AV": "投稿了一个视频",
             "DYNAMIC_TYPE_FORWARD": "转发了一条动态",
             "DYNAMIC_TYPE_DRAW": "发布了一条图文动态",
-            "DYNAMIC_TYPE_MUSIC": "新出了一首音乐专辑",
             "DYNAMIC_TYPE_ARTICLE": "发表了一篇新的专栏",
+            "DYNAMIC_TYPE_MUSIC": "新出了一首音乐专辑",
+            "DYNAMIC_TYPE_LIVE_RCMD": "开播啦",
         }
         super().__init__(event, auth)
         if self.ID in self.robot.persist_mods:
@@ -735,6 +737,8 @@ class Bilibili(Module):
             dynamic_id = dynamic["id_str"]
             if dynamic_id in [d["id_str"] for d in self.dynamics.get(uid, {})]:
                 continue
+            if "DYNAMIC_TYPE_LIVE_RCMD" == dynamic["type"]:
+                continue
             if len(self.dynamics.get(uid, {})) == 0:
                 self.dynamics[uid].insert(i, dynamic)
                 result.append(dynamic)
@@ -932,6 +936,12 @@ class Bilibili(Module):
             content += "\n" + music.get("jump_url", "") + "\n"
             content = music.get("title", "")
             if cover := music.get("cover"):
+                imgs.append(cover)
+        elif "DYNAMIC_TYPE_LIVE_RCMD" == dynamic_type:
+            live_rcmd = module_dynamic.get("major", {}).get("live_rcmd", {})
+            data = json.loads(live_rcmd.get("content", ""))
+            content = data.get("live_play_info", {}).get("title", "")
+            if cover := data.get("live_play_info", {}).get("cover", ""):
                 imgs.append(cover)
         return {
             "url": url,

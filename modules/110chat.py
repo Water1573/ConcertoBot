@@ -400,7 +400,12 @@ class Chat(Module):
                         self.errorf(traceback.format_exc())
                 content = re.sub(r"\[CQ:record.*\]", f"[语音:{text.strip()}]", content)
                 nodes.append(self.node(content, user_id=user_id, nickname=nickname))
-            self.reply_forward(nodes, "一小时内撤回消息列表")
+            result = self.reply_forward(nodes, "一小时内撤回消息列表")
+            if not status_ok(result):
+                # 一般是发送图片出错
+                for node in nodes:
+                    node["data"]["content"] = re.sub(r"\[CQ:image.*\]", "[未知图片]", node["data"]["content"])
+                self.reply_forward(nodes, "一小时内撤回消息列表")
         else:
             self.reply("什么也没有哦~")
 
@@ -478,12 +483,15 @@ class Chat(Module):
         self.record_user(self.event.user_id, self.event.user_name)
 
     @via(lambda self: self.config[self.owner_id]["record"]["enable"]
-         or self.event.post_type == "message_sent", success=False)
+         and self.event.post_type in ["message", "message_sent"], success=False)
     def a_record_msg(self):
         """聊天消息记录"""
         self.count_chat(self.owner_id, self.event.user_id, self.event.text)
+        # 去CQ码
         msg = re.sub(r"(\[|【|{)[\s\S]*(\]|】|})", "", self.event.text)
+        # 去URL
         msg = re.sub(r"http[s]?://\S+", "", msg)
+        # 去重复
         msg = re.sub(r"(.+?)\1{2,}", r"\1", msg)
         self.store_chat(self.owner_id, self.event.user_id, msg)
 
@@ -549,7 +557,7 @@ class Chat(Module):
                 (owner_id, user_id, date),
             )
             row = cur.fetchone()
-            if row and row[0]:
+            if row:
                 text += row[0]
                 sticker += row[1]
                 image += row[2]
@@ -853,7 +861,7 @@ class Chat(Module):
             colors = list(colors)
             random.shuffle(colors)
             plt.barh(users_sorted, counts_sorted, color=colors)
-            title = f"{group_name} 累计发言统计({len(dates)}天共{sum(counts.values())}条)"
+            title = f"{group_name} 发言统计({len(dates)}天共{sum(counts.values())}条)"
             if len(counts) > 20:
                 title += "(仅展示前20人)"
             for i, v in enumerate(counts_sorted):
@@ -887,10 +895,6 @@ class Chat(Module):
             total = text = sticker = image = others = 0
             for _, uid, msg_date, text, sticker, image, others in data:
                 total += text + sticker + image + others
-                text += text
-                sticker += sticker
-                image += image
-                others += others
             # 绘制饼图
             labels = ["文本", "表情包", "图片", "其他"]
             sizes = [text, sticker, image, others]
