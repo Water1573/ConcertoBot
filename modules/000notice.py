@@ -15,16 +15,18 @@ class Notice(Module):
     ID = "Notice"
     NAME = "基础通知处理模块"
     HELP = None
-    GLOBAL_CONFIG = None
-    CONV_CONFIG = None
+    GLOBAL_CONFIG = {
+        "poke_reply": True,
+        "self_introduction": True,
+        "welcome_newbie": True,
+    }
     HANDLE_NOTICE = True
     HANDLE_MESSAGE = False
 
-    @via(
-        lambda self: self.event.notice_type == "notify"
-        and self.event.sub_type == "poke"
-        and not self.is_self_send()
-    )
+    @via(lambda self: self.event.notice_type == "notify"
+         and self.event.sub_type == "poke"
+         and self.config.get("poke_reply")
+         and not self.is_self_send())
     def poke(self):
         if self.event.group_id and self.event.group_id in self.robot.config.rev_group:
             self.printf(
@@ -50,11 +52,9 @@ class Notice(Module):
             if random.choice(range(5)) == 0:
                 reply_event(self.robot, self.event, "%BE_POKED%")
 
-    @via(
-        lambda self: self.event.notice_type == "notify"
-        and self.event.sub_type == "input_status"
-        and self.event.raw.get("status_text")
-    )
+    @via(lambda self: self.event.notice_type == "notify"
+         and self.event.sub_type == "input_status"
+         and self.event.raw.get("status_text"))
     def typing(self):
         if status_text := self.event.raw.get("status_text"):
             self.printf(
@@ -74,23 +74,17 @@ class Notice(Module):
 
     @via(lambda self: self.event.notice_type == "friend_add")
     def friend_add(self):
-        self.printf(
-            f"{Fore.MAGENTA}{self.event.user_name}({self.event.user_id}){Fore.RESET}已加为好友"
-        )
+        self.printf(f"{Fore.MAGENTA}{self.event.user_name}({self.event.user_id}){Fore.RESET}已加为好友")
 
     @via(lambda self: self.event.notice_type == "friend_recall")
     def friend_recall(self):
-        self.printf(
-            f"{Fore.MAGENTA}{self.event.operator_name}({self.event.operator_id})撤回了一条消息"
-        )
+        self.printf(f"{Fore.MAGENTA}{self.event.operator_name}({self.event.operator_id})撤回了一条消息")
         msg = "%OTHER_RECALL%"
         reply_event(self.robot, self.event, msg)
 
     @via(lambda self: self.event.notice_type == "group_recall")
     def group_recall(self):
-        self.printf(
-            f"在群{Fore.MAGENTA}{self.event.group_name}({self.event.group_id}){Fore.RESET}检测到一条撤回消息"
-        )
+        self.printf(f"在群{Fore.MAGENTA}{self.event.group_name}({self.event.group_id}){Fore.RESET}检测到一条撤回消息")
         recall_time = time.strftime(
             "%Y年%m月%d日%H:%M:%S", time.localtime(self.event.time)
         )
@@ -118,51 +112,59 @@ class Notice(Module):
         file_name = self.event.raw["file"]["name"]
         file_size = calc_size(self.event.raw["file"]["size"])
         self.printf(
-            f"群{Fore.MAGENTA}{self.event.group_name}({self.event.group_id}){Fore.RESET}内{Fore.MAGENTA}{self.event.user_name}({self.event.user_id}){Fore.RESET}上传了文件{Fore.YELLOW}{file_name}({file_size})"
+            f"群{Fore.MAGENTA}{self.event.group_name}({self.event.group_id}){Fore.RESET}内"
+            f"{Fore.MAGENTA}{self.event.user_name}({self.event.user_id}){Fore.RESET}上传了"
+            f"文件{Fore.YELLOW}{file_name}({file_size})"
         )
 
     @via(lambda self: self.event.notice_type == "group_admin")
     def group_admin(self):
         if self.event.sub_type == "set":
             self.printf(
-                f"群{Fore.MAGENTA}{self.event.group_name}({self.event.group_id}){Fore.RESET}内{Fore.MAGENTA}{self.event.user_name}({self.event.user_id}){Fore.RESET}被设为管理员"
+                f"群{Fore.MAGENTA}{self.event.group_name}({self.event.group_id}){Fore.RESET}内"
+                f"{Fore.MAGENTA}{self.event.user_name}({self.event.user_id}){Fore.RESET}被设为管理员"
             )
         elif self.event.sub_type == "unset":
             self.printf(
-                f"群{Fore.MAGENTA}{self.event.group_name}({self.event.group_id}){Fore.RESET}内管理员{Fore.MAGENTA}{self.event.user_name}({self.event.user_id}){Fore.RESET}被取缔"
+                f"群{Fore.MAGENTA}{self.event.group_name}({self.event.group_id}){Fore.RESET}内"
+                f"管理员{Fore.MAGENTA}{self.event.user_name}({self.event.user_id}){Fore.RESET}被取缔"
             )
 
     @via(lambda self: self.event.notice_type == "group_decrease")
     def group_decrease(self):
         if self.event.sub_type == "leave":
             self.printf(
-                f"{Fore.MAGENTA}{self.event.user_name}({self.event.user_id}){Fore.RESET}主动退群{Fore.MAGENTA}{self.event.group_name}({self.event.group_id}){Fore.RESET}"
+                f"{Fore.MAGENTA}{self.event.user_name}({self.event.user_id}){Fore.RESET}主动退"
+                f"群{Fore.MAGENTA}{self.event.group_name}({self.event.group_id}){Fore.RESET}"
             )
         elif self.event.sub_type == "kick":
             self.printf(
-                f"{Fore.MAGENTA}{self.event.user_name}({self.event.user_id}){Fore.RESET}被踢出群{Fore.MAGENTA}{self.event.group_name}({self.event.group_id}){Fore.RESET}"
+                f"{Fore.MAGENTA}{self.event.user_name}({self.event.user_id}){Fore.RESET}被踢出"
+                f"群{Fore.MAGENTA}{self.event.group_name}({self.event.group_id}){Fore.RESET}"
             )
         elif self.event.sub_type == "disband":
             operator_name = get_user_name(self.robot, self.event.operator_id)
             self.printf(
-                f"{Fore.MAGENTA}{operator_name}({self.event.operator_id}){Fore.RESET}已将群{Fore.MAGENTA}{self.event.group_name}({self.event.group_id}){Fore.RESET}解散"
+                f"{Fore.MAGENTA}{operator_name}({self.event.operator_id}){Fore.RESET}已将"
+                f"群{Fore.MAGENTA}{self.event.group_name}({self.event.group_id}){Fore.RESET}解散"
             )
 
     @via(lambda self: self.event.notice_type == "group_increase")
     def group_increase(self):
         if self.event.sub_type == "approve":
             self.printf(
-                f"{Fore.MAGENTA}{self.event.user_name}({self.event.user_id}){Fore.RESET}已被同意加入群{Fore.MAGENTA}{self.event.group_name}({self.event.group_id}){Fore.RESET}"
+                f"{Fore.MAGENTA}{self.event.user_name}({self.event.user_id}){Fore.RESET}已被同意加入"
+                f"群{Fore.MAGENTA}{self.event.group_name}({self.event.group_id}){Fore.RESET}"
             )
         elif self.event.sub_type == "invite":
             self.printf(
-                f"{Fore.MAGENTA}{self.event.user_name}({self.event.user_id}){Fore.RESET}已被邀请加入群{Fore.MAGENTA}{self.event.group_name}({self.event.group_id}){Fore.RESET}"
+                f"{Fore.MAGENTA}{self.event.user_name}({self.event.user_id}){Fore.RESET}已被邀请加入"
+                f"群{Fore.MAGENTA}{self.event.group_name}({self.event.group_id}){Fore.RESET}"
             )
-
-        if self.event.user_id == self.robot.self_id:
+        if self.event.user_id == self.robot.self_id and self.config.get("self_introduction"):
             msg = "%SELF_INTRODUCTION%"
             reply_id(self.robot, "group", self.event.group_id, msg)
-        elif self.event.group_id in self.robot.config.rev_group:
+        elif self.event.group_id in self.robot.config.rev_group and self.config.get("welcome_newbie"):
             msg = self.event.user_name + " %WELCOME_NEWBIE%"
             reply_id(self.robot, "group", self.event.group_id, msg)
 
@@ -174,26 +176,30 @@ class Notice(Module):
         if self.event.user_id == 0:
             if self.event.sub_type == "ban":
                 self.printf(
-                    f"群{Fore.MAGENTA}{self.event.group_name}({self.event.group_id}){Fore.RESET}内{Fore.MAGENTA}{self.event.operator_name}({self.event.operator_id}){Fore.RESET}设置了{Fore.YELLOW}{duration}{Fore.RESET}的全员禁言"
+                    f"群{Fore.MAGENTA}{self.event.group_name}({self.event.group_id}){Fore.RESET}内"
+                    f"{Fore.MAGENTA}{self.event.operator_name}({self.event.operator_id}){Fore.RESET}设置了"
+                    f"{Fore.YELLOW}{duration}{Fore.RESET}的全员禁言"
                 )
             elif self.event.sub_type == "lift_ban":
                 self.printf(
-                    f"群{Fore.MAGENTA}{self.event.group_name}({self.event.group_id}){Fore.RESET}内{Fore.MAGENTA}{self.event.operator_name}({self.event.operator_id}){Fore.RESET}解除了全员禁言"
+                    f"群{Fore.MAGENTA}{self.event.group_name}({self.event.group_id}){Fore.RESET}内"
+                    f"{Fore.MAGENTA}{self.event.operator_name}({self.event.operator_id}){Fore.RESET}解除了全员禁言"
                 )
         else:
             if self.event.sub_type == "ban":
                 self.printf(
-                    f"群{Fore.MAGENTA}{self.event.group_name}({self.event.group_id}){Fore.RESET}内{Fore.MAGENTA}{self.event.operator_name}({self.event.operator_id}){Fore.RESET}为{Fore.MAGENTA}{self.event.user_name}({self.event.user_id}){Fore.RESET}设置了{Fore.YELLOW}{duration}{Fore.RESET}的禁言"
+                    f"群{Fore.MAGENTA}{self.event.group_name}({self.event.group_id}){Fore.RESET}内"
+                    f"{Fore.MAGENTA}{self.event.operator_name}({self.event.operator_id}){Fore.RESET}为"
+                    f"{Fore.MAGENTA}{self.event.user_name}({self.event.user_id}){Fore.RESET}设置了{Fore.YELLOW}{duration}{Fore.RESET}的禁言"
                 )
             elif self.event.sub_type == "lift_ban":
                 self.printf(
-                    f"群{Fore.MAGENTA}{self.event.group_name}({self.event.group_id}){Fore.RESET}内{Fore.MAGENTA}{self.event.operator_name}({self.event.operator_id}){Fore.RESET}解除了{Fore.MAGENTA}{self.event.user_name}({self.event.user_id}){Fore.RESET}的禁言"
+                    f"群{Fore.MAGENTA}{self.event.group_name}({self.event.group_id}){Fore.RESET}内"
+                    f"{Fore.MAGENTA}{self.event.operator_name}({self.event.operator_id}){Fore.RESET}解除了"
+                    f"{Fore.MAGENTA}{self.event.user_name}({self.event.user_id}){Fore.RESET}的禁言"
                 )
 
-    @via(
-        lambda self: self.event.notice_type == "notify"
-        and self.event.sub_type == "profile_like"
-    )
+    @via(lambda self: self.event.notice_type == "notify" and self.event.sub_type == "profile_like")
     def profile_like(self):
         times = self.event.raw.get("times")
         self.printf(

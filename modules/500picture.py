@@ -167,14 +167,14 @@ class Picture(Module):
             return self.reply("解析API响应失败", reply=True)
 
     @via(lambda self: self.au(2) and self.at_or_private()
-         and self.match(r"^我?(要|来|发|看|给|有没有){0,3}?(更|超|超级|很|再|无敌|最强){0,3}?(来|发|看|给|瑟|涩|色|se)\S{0,10}(图|瑟|涩|色|se|好看|好康|可爱)的?"))
+         and self.match(r"^我?(要|来|发|看|给|有没有){0,3}?(更|超|超级|很|再|无敌|最强|大){0,3}?(来|发|看|给|瑟|涩|色|se)\S{0,10}(图|瑟|涩|色|se|好看|好康|可爱)的?"))
     def lolicon(self):
         tags = []
         r18_mode = 0
         if len(self.event.text.split(" ")) > 1:
             tags = self.event.text.split(" ")[1:]
-        if len(tags) == 0 and self.match(r"[张|个](\S+)的"):
-            tags.append(self.match(r"[张|个](\S+)的").group(1))
+        if len(tags) == 0 and self.match(r"[张个点只](\S+?)[的图瑟涩色]"):
+            tags.append(self.match(r"[张个点只](\S+?)[的图瑟涩色]").group(1))
         if self.match(r"(更|超|超级|很|再|无敌|最强)"):
             r18_mode = 1
         try:

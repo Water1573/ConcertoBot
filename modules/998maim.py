@@ -36,6 +36,7 @@ from src.utils import (
     get_image_format,
     get_msg,
     get_record,
+    get_user_name,
     group_member_info,
     poke,
     reply_id,
@@ -70,6 +71,7 @@ class Maim(Module):
         "enable": True,
         "blacklist": [],
     }
+    HANDLE_NOTICE = True
     AUTO_INIT = True
 
     def __init__(self, event, auth=0):
@@ -151,9 +153,7 @@ class Maim(Module):
                     if group_info is None:
                         info = poke(self.robot, args.get("user_id"))
                     else:
-                        info = poke(
-                            self.robot, args.get("user_id"), group_info.group_id
-                        )
+                        info = poke(self.robot, args.get("user_id"), group_info.group_id)
                 case "delete_msg":
                     info = del_msg(self.robot, args.get("message_id"))
                 case "send_group_ai_record":
@@ -288,15 +288,13 @@ class Maim(Module):
             payload = process_message(segment, payload)
         return payload
 
-    async def handle_msg(self, raw: str, in_reply: bool = False) -> List[Seg] | None:
+    async def handle_msg(self, raw: dict, in_reply: bool = False) -> List[Seg] | None:
         """处理实际消息"""
         msg: str = raw.get("message")
-        if not msg:
+        if msg == "":
             return None
-        if "CQ:json" in msg:
-            msg = re.sub(r"(\s)+", "", msg)
         seg_message: List[Seg] = []
-        while re.search(r"(\[CQ:(.+?),(.+?)\])", msg):
+        while re.search(r"(\[CQ:(.+?),(.+?)\])", msg or ""):
             cq_code, cq_type, cq_data = re.search(r"(\[CQ:(.+?),(.+?)\])", msg).groups()
             data = {}
             for item in cq_data.split(","):
@@ -394,6 +392,7 @@ class Maim(Module):
                 # case "xml":
                 #     pass
                 case "json":
+                    msg = re.sub(r"(\s)+", "", msg)
                     json_data = json.loads(html.unescape(data.get("data")))
                     detail = next(iter(json_data.get("meta", {}).values()))
                     title = detail.get("title", "")
@@ -412,8 +411,13 @@ class Maim(Module):
                     seg_message.append(seg)
             msg = msg.replace(cq_code, "", 1)
         if msg:
-            msg  = msg.replace("你收到一个专属红包，请在新版手机QQ查看。", "")
+            msg = msg.replace("你收到一个专属红包，请在新版手机QQ查看。", "")
             seg_message.append(Seg(type="text", data=msg))
+        elif raw.get("sub_type") == "poke":
+            txt = raw.get("raw_info")[2]["txt"]
+            target_id = raw.get("target_id")
+            target_name = get_user_name(self.robot, target_id)
+            seg_message.append(Seg(type="text", data=f"[{txt}{target_name}]"))
         return seg_message
 
     async def handle_forward_msg(self, msg_list: list) -> Seg | None:
@@ -586,10 +590,8 @@ class Maim(Module):
             self.errorf(f"图片转换为GIF失败: {e}")
             return image_base64
 
-    @via(
-        lambda self: self.at_or_private() and self.au(1)
-        and self.match(r"^(开启|启用|打开|记录|启动|关闭|禁用|取消)麦麦$")
-    )
+    @via(lambda self: self.at_or_private() and self.au(1)
+         and self.match(r"^(开启|启用|打开|记录|启动|关闭|禁用|取消)麦麦$"))
     def enable_maimbot(self):
         """启用麦麦"""
         msg = ""
@@ -603,10 +605,7 @@ class Maim(Module):
             self.save_config()
         self.reply(msg)
 
-    @via(
-        lambda self: self.at_or_private() and self.au(1)
-        and self.match(r"^重新连接麦麦$")
-    )
+    @via(lambda self: self.at_or_private() and self.au(1) and self.match(r"^重新连接麦麦$"))
     async def restart_maimbot(self):
         """重新连接麦麦"""
         try:
@@ -624,12 +623,16 @@ class Maim(Module):
     @via(lambda self: self.ID in self.robot.persist_mods
          and self.config[self.owner_id]["enable"]
          and self.event.user_id not in self.config[self.owner_id].get("blacklist")
+         and (self.event.msg or self.event.sub_type == "poke")
     )
     def send_maimbot(self):
         """发送至麦麦"""
         async def send_msg_task():
-            if msg := await self.construct_message():
-                await self.send_to_maim(msg)
+            try:
+                if msg := await self.construct_message():
+                    await self.send_to_maim(msg)
+            except Exception:
+                self.errorf(traceback.format_exc())
         self.loop.call_soon_threadsafe(
             lambda: asyncio.create_task(send_msg_task())
         )

@@ -286,6 +286,8 @@ class Concerto:
             event (Event): 事件数据
             auth (int, optional): 权限等级
         """
+        self.printf(f"{Fore.GREEN}[NOTICE] {Fore.RESET}收到了{Fore.MAGENTA}{event.user_id}{Fore.RESET}对"
+                    f"{Fore.MAGENTA}{event.target_id}{Fore.RESET}的{Fore.MAGENTA}{event.sub_type}{Fore.RESET}类型通知")
         self.module_handle(event, "notice", auth)
 
     def request(self, event: Event, auth=3):
@@ -299,12 +301,12 @@ class Concerto:
         comment = event.raw.get("comment")
         if request_type == "friend":
             self.printf(
-                f"{Fore.CYAN}[REQUEST]{Fore.RESET}{Fore.MAGENTA}{event.user_name}({event.user_id}){Fore.RESET}发送好友请求"
+                f"{Fore.CYAN}[REQUEST] {Fore.RESET}{Fore.MAGENTA}{event.user_name}({event.user_id}){Fore.RESET}发送好友请求"
                 f"{Fore.MAGENTA}{comment}{Fore.RESET}，使用 {Fore.CYAN}add agree/deny 备注{Fore.RESET} 同意或拒绝此请求"
             )
         elif request_type == "group":
             self.printf(
-                f"{Fore.CYAN}[REQUEST]{Fore.RESET}{Fore.MAGENTA}{event.user_name}({event.user_id}){Fore.RESET}发送加群请求"
+                f"{Fore.CYAN}[REQUEST] {Fore.RESET}{Fore.MAGENTA}{event.user_name}({event.user_id}){Fore.RESET}发送加群请求"
                 f"{Fore.MAGENTA}{comment}{Fore.RESET}，使用 {Fore.CYAN}add agree/deny 理由{Fore.RESET} 同意或拒绝此请求"
             )
         self.module_handle(event, "request", auth)
@@ -318,7 +320,7 @@ class Concerto:
         """
         if self.config.is_show_heartbeat:
             received = event.raw["status"]["stat"]["PacketReceived"]
-            self.printf(f"{Fore.CYAN}[EVENT]{Fore.RESET}接收到API的第{Fore.MAGENTA}{received}{Fore.RESET}个心跳包")
+            self.printf(f"{Fore.CYAN}[EVENT] {Fore.RESET}接收到API的第{Fore.MAGENTA}{received}{Fore.RESET}个心跳包")
         self.module_handle(event, "event", auth)
 
     def import_modules(self):
