@@ -41,25 +41,23 @@ class Tiktok(Module):
         try:
             if not self.is_private():
                 set_emoji(self.robot, self.event.msg_id, 124)
-            data = self.retry(lambda url=url: self.get_info(url))
-            if data.get("code") != 200:
-                self.reply(f"抖音视频解析失败，错误信息：{data.get("msg", "未知错误")}", reply=True)
-                return
+            play_url = self.retry(lambda url=url: self.get_play_url(url))
             if not self.is_private():
                 set_emoji(self.robot, self.event.msg_id, 66)
-            msg = f"[CQ:video,file={data["data"]["url"]}]"
+            msg = f"[CQ:video,file={play_url}]"
             self.reply(msg)
         except Exception as e:
             self.errorf(traceback.format_exc())
             return self.reply_forward(self.node(f"{e}"), source="抖音视频处理失败")
 
-    def get_info(self, url: str) -> dict:
+    def get_play_url(self, url: str) -> str:
         """获取视频信息"""
-        api_url = f"https://api.pearktrue.cn/api/video/douyin/?url={quote(url)}"
-        resp = httpx.get(api_url, timeout=10, follow_redirects=True)
-        resp.raise_for_status()
-        data = resp.json()
-        return data
+        resp = httpx.get(url, timeout=10, follow_redirects=True, headers={"User-Agent": "Mozilla/5.0 (Linux; Android 6.0;)"})
+        match = re.search(r"\"url_list\"\s*:\s*\[\"([^\]]+snssdk[^\]]+)\"\]", resp.text)
+        url = match.group(1)
+        url = url.encode("utf-8").decode("unicode_escape")
+        url = url.replace("playwm", "play")
+        return url
 
     def retry(self, func: Callable[..., Any], name="", max_retries=5, delay=1, failed_ok=True) -> Any:
         """多次尝试执行"""

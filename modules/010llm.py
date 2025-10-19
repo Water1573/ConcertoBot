@@ -45,20 +45,20 @@ class LLM(Module):
             try:
                 model = self.get_request_params(model_type="chat")
                 self.printf(f"已为chat载入模型[{model["name"]}]")
-                self.robot.func["llm_chat"] = self.llm_chat
-                self.robot.func["async_llm_chat"] = self.async_llm_chat
+                self.robot.activate_func(self.llm_chat)
+                self.robot.activate_func(self.async_llm_chat)
             except Exception as e:
                 self.warnf(f"未配置聊天模型，全局函数不可用 {e}")
             try:
                 model = self.get_request_params(model_type="stt")
                 self.printf(f"已为stt载入模型[{model["name"]}]")
-                self.robot.func["llm_stt"] = self.llm_stt
+                self.robot.activate_func(self.llm_stt)
             except Exception as e:
                 self.warnf(f"未配置STT模型，全局函数不可用 {e}")
             try:
                 model = self.get_request_params(model_type="tts")
                 self.printf(f"已为tts载入模型[{model["name"]}]")
-                self.robot.func["llm_tts"] = self.llm_tts
+                self.robot.activate_func(self.llm_tts)
             except Exception as e:
                 self.warnf(f"未配置TTS模型，全局函数不可用 {e}")
 

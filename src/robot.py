@@ -323,6 +323,12 @@ class Concerto:
             self.printf(f"{Fore.CYAN}[EVENT] {Fore.RESET}接收到API的第{Fore.MAGENTA}{received}{Fore.RESET}个心跳包")
         self.module_handle(event, "event", auth)
 
+    def activate_func(self, func: Callable):
+        """添加可调用函数"""
+        func_name = func.__name__
+        self.func[func_name] = func
+        self.printf(f"新增可调用函数: {Fore.MAGENTA}{func_name}{Fore.RESET}", level="DEBUG")
+
     def import_modules(self):
         """导入 modules 目录及其子目录内的模块"""
         def import_classes(folder_path):

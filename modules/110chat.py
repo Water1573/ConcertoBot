@@ -374,7 +374,7 @@ class Chat(Module):
             if not self.is_private():
                 set_emoji(self.robot, self.event.msg_id, 124)
             nodes = []
-            llm_stt = self.robot.func["llm_stt"]
+            llm_stt = self.robot.func.get("llm_stt")
             for msg in messages:
                 if msg.get("time") and time.time() - msg.get("time") > 3600:
                     continue

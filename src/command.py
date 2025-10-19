@@ -418,9 +418,8 @@ class ExecuteCmd(object):
     def llm(self, argv=""):
         if argv == "":
             self.printf(f"请使用 {Fore.CYAN}llm 文本内容{Fore.RESET} 调用首个配置的大语言模型生成文本(如果可以)")
-        elif "llm_chat" in self.robot.func:
+        elif llm_chat := self.robot.func.get("llm_chat"):
             try:
-                llm_chat = self.robot.func["llm_chat"]
                 self.printf("LLM: ", end="", console=False)
                 for chunk in llm_chat(argv, stream=True):
                     self.printf(chunk, end="", console=False, flush=True)

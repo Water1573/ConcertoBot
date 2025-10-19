@@ -635,7 +635,7 @@ class Bilibili(Module):
                     msg = f"\n[CQ:image,file={avatar}]"
                     msg += f"{name}当前的粉丝数为：{fans}"
                     diff = fans - past_fans
-                    if "gpt" in self.robot.func:
+                    if llm_chat := self.robot.func.get("llm_chat"):
                         if diff > 0:
                             msg += f"\n相比上次记录，粉丝数增加了{diff}"
                         else:
@@ -646,7 +646,7 @@ class Bilibili(Module):
                             "请用简短的两句话，表达自己的看法，请多夹杂日式颜文字和可爱的语气来说明，"
                             "并使用括号描述自己的动作与心情，如果明白，请直接回复内容"
                         )
-                        msg += "\n" + self.robot.func["gpt"](prompt)
+                        msg += "\n" + llm_chat(prompt)
                     elif diff > 0:
                         msg += f"\n相比上次记录，粉丝数增加了{diff}，"
                         if diff > 10000 or diff > fans:

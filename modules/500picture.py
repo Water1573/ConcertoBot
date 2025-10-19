@@ -96,6 +96,8 @@ class Picture(Module):
         msg = msg.replace("/mw600/", "/large/").replace("/thumb180/", "/large/")
         msg = re.sub(r"""<img\s+src="([^"]+)"\s*/?>""", r"[CQ:image,file=\1]", msg)
         reply_back(self.robot, owner, msg)
+        if notify_maimbot := self.robot.func.get("notify_maimbot"):
+            notify_maimbot(msg, owner[1:])
 
     @via(lambda self: self.au(2) and self.at_or_private()
          and self.match(r"^(来|发)(张|个)(无聊|屌|弔|吊|梗)图$"))
@@ -530,9 +532,10 @@ class Picture(Module):
 
     async def get_jiandan(self, page=0, page_num=3, raise_error = False) -> str | None:
         """获取一张煎蛋无聊图"""
+        page_str = f"第{page}页" if page else "最新一页"
         try:
             url = f"https://jandan.net/api/comment/post/26402?order=desc?page={page}"
-            self.printf(f"获取煎蛋无聊图{f"第{page}页" if page else f"最新一页"}数据")
+            self.printf(f"获取煎蛋无聊图{page_str}数据")
             resp = await httpx.AsyncClient().get(url, timeout=3)
             resp.raise_for_status()
             data = resp.json().get("data", {}).get("list")
@@ -553,8 +556,10 @@ class Picture(Module):
                     result.append(item)
             self.printf(f"共请求到{len(result)}条有效的帖子")
             return result
+        except httpx.ConnectTimeout as e:
+            self.errorf(f"获取煎蛋无聊图{page_str}时网络请求超时 {e}")
         except Exception as e:
-            self.errorf(f"获取煎蛋无聊图失败 {traceback.format_exc()}")
+            self.errorf(f"获取煎蛋无聊图{page_str}失败 {traceback.format_exc()}")
             if raise_error:
                 raise e
             return []

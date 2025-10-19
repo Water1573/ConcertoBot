@@ -267,7 +267,7 @@ class Message(Module):
         match = self.match(r"向?(\d+)?发?送?(语音|读)\s?(.*)")
         group_id = match.group(1)
         text = match.group(3)
-        if llm_tts := self.robot.func["llm_tts"]:
+        if llm_tts := self.robot.func.get("llm_tts"):
             record = llm_tts(text)
             if isinstance(record, bytes):
                 b64 = base64.b64encode(record).decode()

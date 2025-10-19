@@ -28,11 +28,21 @@ class Webhook(Module):
         ],
     }
     GLOBAL_CONFIG = {
-      "host": "127.0.0.1",
-      "port": 3109,
-      "admin_id": "",
-      "admin_warning_delay": 3600,
-      "notify": {},
+        "host": "127.0.0.1",
+        "port": 3109,
+        "admin_id": "",
+        "admin_warning_delay": 3600,
+        "notify": {
+            # Emby Webhook示例
+            "library.new": [
+                {
+                    "keywords": "",
+                    "msg_type": "group",
+                    "number": "",
+                    "msg": "[CQ:image,file=http://127.0.0.1:8096/Items/{img_id}/Images/Primary]《{name}》更新啦~"
+                }
+            ]
+        },
     }
     CONV_CONFIG = None
     AUTO_INIT = True
@@ -43,8 +53,8 @@ class Webhook(Module):
             return
         self.robot.persist_mods[self.ID] = self
         self.latest_warning_time = 0
-        self.msg_deque = deque(maxlen=20)
-        self.msg_imm_deque = deque(maxlen=10)
+        self.msg_deque = deque(maxlen=100)
+        self.msg_imm_deque = deque(maxlen=100)
         threading.Thread(target=self.hooking, daemon=True, name=self.NAME).start()
 
     def hooking(self):
@@ -109,8 +119,7 @@ class Webhook(Module):
             self.warnf(f"接收到一条类型未知类型的外部请求 {msg}")
             return
 
-        self.printf(f"接收到一条类型为{msg_type}的外部请求")
-        self.warnf(f"{data}", level="DEBUG")
+        self.printf(f"接收到一条类型为{msg_type}的外部请求 {msg}")
 
         if self.msg_has_reported(data):
             self.warnf("此外部请求近期已经通报过，已忽略")
@@ -141,7 +150,6 @@ class Webhook(Module):
                 self.warnf(f"{msg_type}已取消通告")
         elif msg_type == "GRAFANA_ALERT":
             self.grafana_alert(data)
-
         self.msg_deque.append({"type": msg_type, "timestamp": int(time.time()), "msg": msg,})
 
     def msg_has_reported(self, data: str, period=86400):
@@ -149,7 +157,7 @@ class Webhook(Module):
         if len(self.msg_deque) == 0:
             return False
         reported = False
-            
+
         if json.dumps(data) in self.msg_deque:
             reported = True
         elif (
@@ -157,7 +165,6 @@ class Webhook(Module):
             and any(data.get("Item", {}).get("SeriesName") in i["msg"] for i in self.msg_deque)
         ):
             reported = True
-
         if period != 0 and time.time() - self.msg_deque[-1]["timestamp"] < period:
             reported = False
         return reported

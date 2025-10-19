@@ -28,11 +28,13 @@ from maim_message import (
 )
 
 from src.utils import (
+    Event,
     Module,
     apply_formatter,
     del_msg,
     get_forward_msg,
     async_get_content_base64,
+    get_group_name,
     get_image_format,
     get_msg,
     get_record,
@@ -82,6 +84,7 @@ class Maim(Module):
         if not self.config["url"]:
             self.errorf("未配置MaiMBot链接地址，模块已禁用")
             return
+        self.robot.func["notify_maimbot"] = self.notify_maimbot
         logger = logging.getLogger("maim_message")
         apply_formatter(logger, self.ID)
         self.loop = asyncio.get_event_loop()
@@ -293,8 +296,9 @@ class Maim(Module):
         msg: str = raw.get("message")
         if msg == "":
             return None
+        msg = re.sub(r"(\s)+", "", msg or "") if "\n" in msg else msg or ""
         seg_message: List[Seg] = []
-        while re.search(r"(\[CQ:(.+?),(.+?)\])", msg or ""):
+        while re.search(r"(\[CQ:(.+?),(.+?)\])", msg):
             cq_code, cq_type, cq_data = re.search(r"(\[CQ:(.+?),(.+?)\])", msg).groups()
             data = {}
             for item in cq_data.split(","):
@@ -392,7 +396,6 @@ class Maim(Module):
                 # case "xml":
                 #     pass
                 case "json":
-                    msg = re.sub(r"(\s)+", "", msg)
                     json_data = json.loads(html.unescape(data.get("data")))
                     detail = next(iter(json_data.get("meta", {}).values()))
                     title = detail.get("title", "")
@@ -522,52 +525,46 @@ class Maim(Module):
                     self.errorf(traceback.format_exc())
                 self.listening()
 
-    async def construct_message(self) -> MessageBase | None:
+    async def construct_message(self, event: Event = None) -> MessageBase | None:
         """根据平台事件构造标准 MessageBase"""
+        event = event or self.event
         user_info = UserInfo(
             platform=self.config["platform"],
-            user_id=self.event.user_id,
-            user_nickname=self.event.user_name,
-            user_cardname=self.event.user_card,
+            user_id=event.user_id,
+            user_nickname=event.user_name,
+            user_cardname=event.user_card,
         )
         group_info = None
-        if self.event.group_id:
+        if event.group_id:
             group_info = GroupInfo(
                 platform=self.config["platform"],
-                group_id=self.event.group_id,
-                group_name=self.event.group_name,
+                group_id=event.group_id,
+                group_name=event.group_name,
             )
         format_info: FormatInfo = FormatInfo(
             content_format=["text", "image", "emoji", "voice"],
             accept_format=[
-                "text",
-                "image",
-                "emoji",
-                "reply",
-                "voice",
-                "command",
-                "voiceurl",
-                "music",
-                "videourl",
-                "file",
+                "text", "image", "emoji", "reply",
+                "voice", "command", "voiceurl",
+                "music", "videourl", "file",
             ],
         )
         message_info = BaseMessageInfo(
             platform=self.config["platform"],
-            message_id=self.event.msg_id,
+            message_id=event.msg_id,
             time=time.time(),
             user_info=user_info,
             group_info=group_info,
             format_info=format_info,
         )
-        seg_message: List[Seg] = await self.handle_msg(self.event.raw)
+        seg_message: List[Seg] = await self.handle_msg(event.raw)
         if len(seg_message) == 0:
             return None
         message_segment = Seg(type="seglist", data=seg_message)
         return MessageBase(
             message_info=message_info,
             message_segment=message_segment,
-            raw_message=self.event.msg,
+            raw_message=event.msg,
         )
 
     def convert_image_to_gif(self, image_base64: str) -> str:
@@ -623,8 +620,7 @@ class Maim(Module):
     @via(lambda self: self.ID in self.robot.persist_mods
          and self.config[self.owner_id]["enable"]
          and self.event.user_id not in self.config[self.owner_id].get("blacklist")
-         and (self.event.msg or self.event.sub_type == "poke")
-    )
+         and (self.event.msg or self.event.sub_type == "poke"))
     def send_maimbot(self):
         """发送至麦麦"""
         async def send_msg_task():
@@ -633,9 +629,54 @@ class Maim(Module):
                     await self.send_to_maim(msg)
             except Exception:
                 self.errorf(traceback.format_exc())
-        self.loop.call_soon_threadsafe(
-            lambda: asyncio.create_task(send_msg_task())
-        )
+        self.loop.call_soon_threadsafe(lambda: asyncio.create_task(send_msg_task()))
+
+    def notify_maimbot(self, content: str, group_id: str):
+        """通知麦麦"""
+        if not self.ID in self.robot.persist_mods:
+            self.warnf("未开启麦麦功能，遂未发送")
+        if not self.config[f"g{group_id}"]["enable"]:
+            self.warnf(f"群{group_id}未开启麦麦功能，遂未发送")
+            return
+        async def send_msg_task():
+            try:
+                user_info = UserInfo(
+                    platform=self.config["platform"],
+                    user_id=self.robot.self_id,
+                    user_nickname=self.robot.self_name,
+                )
+                group_info = GroupInfo(
+                    platform=self.config["platform"],
+                    group_id=group_id,
+                    group_name=get_group_name(self.robot, group_id),
+                )
+                format_info: FormatInfo = FormatInfo(
+                    content_format=["text", "image", "emoji", "voice"],
+                    accept_format=[
+                        "text", "image", "emoji", "reply",
+                        "voice", "command", "voiceurl",
+                        "music", "videourl", "file",
+                    ],
+                )
+                message_info = BaseMessageInfo(
+                    platform=self.config["platform"],
+                    message_id=int(time.time()),
+                    time=time.time(),
+                    user_info=user_info,
+                    group_info=group_info,
+                    format_info=format_info,
+                )
+                seg_message: List[Seg] = await self.handle_msg({"message":content})
+                message_segment = Seg(type="seglist", data=seg_message)
+                msg = MessageBase(
+                    message_info=message_info,
+                    message_segment=message_segment,
+                    raw_message=content,
+                )
+                await self.send_to_maim(msg)
+            except Exception:
+                self.errorf(traceback.format_exc())
+        self.loop.call_soon_threadsafe(lambda: asyncio.create_task(send_msg_task()))
 
 qq_face: dict = {
     "0": "[表情：惊讶]",
