@@ -642,6 +642,17 @@ def get_user_name(robot: "Concerto", uid: str):
             return name
         return ""
 
+def get_user_id(robot: "Concerto", user_name: str, group_id: str = None) -> str:
+    """使用用户名获取用户ID"""
+    if group_id:
+        member_list = get_group_member_list(robot, group_id).get("data", [])
+        for member in member_list:
+            if user_name == member["card"] or user_name == member["nickname"]:
+                return member["user_id"]
+    for uid, name in robot.user_dict.items():
+        if name == user_name:
+            return uid
+
 def get_group_info(robot: "Concerto", group_id: str):
     """
     获取群信息
@@ -686,7 +697,7 @@ def set_group_kick(robot: "Concerto", group_id: str, user_id: str):
 
 def get_group_member_list(robot: "Concerto", group_id: str):
     """
-    获取群名称
+    获取群内用户列表
     :param robot: 机器人类
     :param id: 群号
     """
@@ -694,7 +705,6 @@ def get_group_member_list(robot: "Concerto", group_id: str):
         return
     resp_dict = {"group_id": group_id, "no_cache": False}
     return api.get_group_member_list(robot, resp_dict)
-    
 
 def get_group_name(robot: "Concerto", group_id: str) -> str:
     """

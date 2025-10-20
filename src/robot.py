@@ -245,6 +245,8 @@ class Concerto:
             event (Event): 事件数据
             auth (int, optional): 权限等级
         """
+        if event.user_id not in self.user_dict and event.user_name and event.user_id:
+            self.user_dict[event.user_id] = event.user_name
         if not event.group_id:
             self.printf(
                 f"{Fore.GREEN}[RECEIVE] {Fore.RESET}"

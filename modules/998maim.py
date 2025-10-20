@@ -38,6 +38,7 @@ from src.utils import (
     get_image_format,
     get_msg,
     get_record,
+    get_user_id,
     get_user_name,
     group_member_info,
     poke,
@@ -249,6 +250,13 @@ class Maim(Module):
                 new_payload = build_payload(payload, f"[CQ:reply,id={target_id}]", True)
             elif seg.type == "text":
                 text = seg.data
+                if match := re.search(r"<[@#](.*?)>", text):
+                    user_name = match.group(1)
+                    user_id = get_user_id(self.robot, user_name, self.event.group_id)
+                    if re.search(r"<#(.*?)>", text):
+                        poke(self.robot, user_id, self.event.group_id)
+                    at_msg = f"[CQ:at,qq={user_id}]" if user_id else f"@{user_name}"
+                    text = re.sub(r"<@(.*?)>", at_msg, text)
                 if not text:
                     return payload
                 new_payload = build_payload(payload, text, False)
@@ -296,7 +304,7 @@ class Maim(Module):
         msg: str = raw.get("message")
         if msg == "":
             return None
-        msg = re.sub(r"(\s)+", "", msg or "") if "\n" in msg else msg or ""
+        msg = re.sub(r"(\s)+", "", msg) if msg and "\n" in msg else msg or ""
         seg_message: List[Seg] = []
         while re.search(r"(\[CQ:(.+?),(.+?)\])", msg):
             cq_code, cq_type, cq_data = re.search(r"(\[CQ:(.+?),(.+?)\])", msg).groups()
@@ -369,7 +377,7 @@ class Maim(Module):
                 case "image":
                     seg = Seg(type="text", data="<图片>")
                     try:
-                        url = data.get("url")
+                        url = data.get("url") or data.get("file")
                         image_base64 = await async_get_content_base64(self.robot, url)
                         sub_type = data.get("sub_type")
                         if sub_type == 0:
@@ -400,7 +408,7 @@ class Maim(Module):
                     detail = next(iter(json_data.get("meta", {}).values()))
                     title = detail.get("title", "")
                     desc = detail.get("desc", "")
-                    tag = f"({detail.get("desc", "")})"
+                    tag = f"({detail.get("tag", "")})"
                     seg = Seg(type="text", data=f"分享<小程序[{title}]:{desc}{tag}>")
                 case "file":
                     file = data.get("file")
