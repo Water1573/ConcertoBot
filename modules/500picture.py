@@ -94,7 +94,7 @@ class Picture(Module):
         self.save_config()
         msg = data.get("content").strip()
         msg = msg.replace("/mw600/", "/large/").replace("/thumb180/", "/large/")
-        msg = re.sub(r"""<img\s+src="([^"]+)"\s*/?>""", r"[CQ:image,file=\1]", msg)
+        msg = re.sub(r"""<img\s+src="([^"]+)"\s*/?>""", r"[CQ:image,sub_type=0,file=\1]", msg)
         reply_back(self.robot, owner, msg)
         if notify_maimbot := self.robot.func.get("notify_maimbot"):
             notify_maimbot(msg, owner[1:])

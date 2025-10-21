@@ -138,11 +138,11 @@ class Maim(Module):
         info = None
         try:
             match command:
-                case "set_group_ban":
+                case "GROUP_BAN":
                     info = set_group_ban(
                         self.robot,
                         group_info.group_id,
-                        args.get("user_id"),
+                        args.get("qq_id"),
                         args.get("duration"),
                     )
                 case "set_group_whole_ban":
@@ -151,13 +151,13 @@ class Maim(Module):
                     )
                 case "set_group_kick":
                     info = set_group_kick(
-                        self.robot, group_info.group_id, args.get("user_id")
+                        self.robot, group_info.group_id, args.get("qq_id")
                     )
                 case "send_poke":
                     if group_info is None:
-                        info = poke(self.robot, args.get("user_id"))
+                        info = poke(self.robot, args.get("qq_id"))
                     else:
-                        info = poke(self.robot, args.get("user_id"), group_info.group_id)
+                        info = poke(self.robot, args.get("qq_id"), group_info.group_id)
                 case "delete_msg":
                     info = del_msg(self.robot, args.get("message_id"))
                 case "send_group_ai_record":
@@ -210,6 +210,11 @@ class Maim(Module):
             else:
                 info = send_forward_msg(self.robot, self.node(msg), user_id=target_id, source=source)
         else:
+            # 不重复发送消息
+            past_msg = self.robot.self_message[-1]
+            if re.sub(r"\[CQ:.*?\]", "", msg) == re.sub(r"\[CQ:.*?\]", "", past_msg):
+                self.warnf("消息与上一条消息相同，未发送")
+                return
             info = reply_id(self.robot, msg_type, target_id, msg)
         if status_ok(info):
             qq_message_id = info["data"].get("message_id")
@@ -250,13 +255,14 @@ class Maim(Module):
                 new_payload = build_payload(payload, f"[CQ:reply,id={target_id}]", True)
             elif seg.type == "text":
                 text = seg.data
-                if match := re.search(r"<[@#](.*?)>", text):
+                if match := re.search(r"\([@#](.*?)\)", text):
                     user_name = match.group(1)
                     user_id = get_user_id(self.robot, user_name, self.event.group_id)
-                    if re.search(r"<#(.*?)>", text):
+                    if re.search(r"\(#(.*?)\)", text):
                         poke(self.robot, user_id, self.event.group_id)
+                        text = re.sub(r"\(#(.*?)\)", "", text)
                     at_msg = f"[CQ:at,qq={user_id}]" if user_id else f"@{user_name}"
-                    text = re.sub(r"<@(.*?)>", at_msg, text)
+                    text = re.sub(r"\(@(.*?)\)", at_msg, text)
                 if not text:
                     return payload
                 new_payload = build_payload(payload, text, False)
@@ -408,7 +414,7 @@ class Maim(Module):
                     detail = next(iter(json_data.get("meta", {}).values()))
                     title = detail.get("title", "")
                     desc = detail.get("desc", "")
-                    tag = f"({detail.get("tag", "")})"
+                    tag = f"({detail.get("tag")})" if detail.get("tag") else ""
                     seg = Seg(type="text", data=f"分享<小程序[{title}]:{desc}{tag}>")
                 case "file":
                     file = data.get("file")
@@ -429,6 +435,14 @@ class Maim(Module):
             target_id = raw.get("target_id")
             target_name = get_user_name(self.robot, target_id)
             seg_message.append(Seg(type="text", data=f"[{txt}{target_name}]"))
+        elif raw.get("notice_type") == "group_ban":
+            if raw.get("sub_type") == "ban":
+                duration = self.event.raw["duration"]
+                target_name = self.event.user_name
+                seg_message.append(Seg(type="text", data=f"[为{target_name}设置了{duration}秒的禁言]"))
+            elif raw.get("sub_type") == "lift_ban":
+                target_name = self.event.user_name
+                seg_message.append(Seg(type="text", data=f"[为{target_name}解除了禁言]"))
         return seg_message
 
     async def handle_forward_msg(self, msg_list: list) -> Seg | None:

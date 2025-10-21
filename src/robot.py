@@ -273,12 +273,12 @@ class Concerto:
         Args:
             event (Event): 事件数据
         """
-        if self.config.is_show_all_msg:
-            self.printf(
-                f"{Fore.GREEN}[SENT] {Fore.RESET}"
-                f"{Fore.MAGENTA}{event.target_name}({event.target_id}){Fore.RESET} "
-                f"{Fore.MAGENTA}(msg_id:{event.msg_id}){Fore.RESET}"
-            )
+        msg = event.msg[:20] + "..." if len(event.msg) > 20 else event.msg
+        self.printf(
+            f"{Fore.GREEN}[SENT] {Fore.RESET}"
+            f"{Fore.MAGENTA}{event.target_name}({event.target_id}){Fore.RESET} "
+            f"{Fore.MAGENTA}(msg_id:{event.msg_id}){Fore.RESET}: {msg}"
+        )
         self.module_handle(event, "message_sent", auth)
 
     def notice(self, event: Event, auth=3):
@@ -288,8 +288,8 @@ class Concerto:
             event (Event): 事件数据
             auth (int, optional): 权限等级
         """
-        self.printf(f"{Fore.GREEN}[NOTICE] {Fore.RESET}收到了{Fore.MAGENTA}{event.user_id}{Fore.RESET}对"
-                    f"{Fore.MAGENTA}{event.target_id}{Fore.RESET}的{Fore.MAGENTA}{event.sub_type}{Fore.RESET}类型通知")
+        self.printf(f"{Fore.GREEN}[NOTICE] {Fore.RESET}收到了{Fore.MAGENTA}{event.user_id}{Fore.RESET}"
+                    f"的{Fore.MAGENTA}{event.sub_type}{Fore.RESET}类型通知", level="DEBUG")
         self.module_handle(event, "notice", auth)
 
     def request(self, event: Event, auth=3):
