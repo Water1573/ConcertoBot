@@ -59,7 +59,7 @@ class Maim(Module):
     NAME = "麦麦适配器模块"
     HELP = {
         0: [
-            "本模块用于对接麦麦机器人，感谢[MaiBot][MaiBot-Napcat-Adapter]对本模块的实现提供助力"
+            "本模块用于对接麦麦机器人，感谢[MaiMBot][MaiMBot-Napcat-Adapter]开源项目对本模块的实现提供助力"
         ],
         1: [
             "[开启|关闭]麦麦 | 开启或关闭麦麦机器人功能",
@@ -90,7 +90,6 @@ class Maim(Module):
         apply_formatter(logger, self.ID)
         self.loop = asyncio.get_event_loop()
         threading.Thread(target=self.loop.run_forever, daemon=True).start()
-        self.error_times = 0
         target_config = TargetConfig(url=self.config["url"], token=None)
         route_config = RouteConfig({self.config["platform"]: target_config})
         self.router = Router(route_config)
@@ -102,7 +101,6 @@ class Maim(Module):
             maim: Maim = self.robot.persist_mods[self.ID]
             self.router = maim.router
             self.loop = maim.loop
-            self.error_times = maim.error_times
         return self.config["url"]
 
     def listening(self):
@@ -530,26 +528,9 @@ class Maim(Module):
             send_status = await self.router.send_message(msg)
             if not send_status:
                 raise RuntimeError("路由未正确配置或连接异常")
-            self.robot.persist_mods[self.ID].error_times = 0
             return send_status
         except Exception:
-            self.robot.persist_mods[self.ID].error_times += 1
-            self.error_times = self.robot.persist_mods[self.ID].error_times
-            if self.error_times == 3:
-                self.errorf(f"请检查与MaiMBot之间的连接, 发送消息失败: {traceback.format_exc()}")
-            if self.error_times > 3:
-                self.errorf("发送消息至MaiMBot失败")
-            if 1 <= self.error_times and self.error_times <= 3:
-                self.warnf("检测到连接异常，自动重启路由")
-                try:
-                    await self.router.clients[self.config["platform"]].stop()
-                except Exception:
-                    self.errorf(traceback.format_exc())
-                try:
-                    await self.router.stop()
-                except Exception:
-                    self.errorf(traceback.format_exc())
-                self.listening()
+            self.errorf(f"请检查与MaiMBot之间的连接, 发送消息失败: {traceback.format_exc()}")
 
     async def construct_message(self, event: Event = None) -> MessageBase | None:
         """根据平台事件构造标准 MessageBase"""
