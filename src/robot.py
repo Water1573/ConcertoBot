@@ -179,8 +179,7 @@ class Concerto:
                 else:
                     return self.message(event)
         elif event.post_type == "message_sent":
-            if event.msg_type == "group":
-                self.self_message.append(rev)
+            self.self_message.append(rev)
             return self.message_sent(event)
         elif event.post_type == "notice":
             data.past_notice.append(rev)

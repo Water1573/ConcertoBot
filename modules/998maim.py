@@ -184,15 +184,16 @@ class Maim(Module):
         target_id: int = None
         msg_type: str = None
         msg: list = []
+
+        if not segment.data:
+            self.warnf("暂不支持解析空回复！")
+            return None
         try:
-            msg = self.handle_seg(segment)
+            group_id = group_info.group_id if group_info else None
+            msg = self.handle_seg(segment, group_id)
         except Exception as e:
             self.errorf(f"处理MaiMBot消息时发生错误: {e}")
             return
-
-        if not msg:
-            self.errorf("暂不支持解析此回复！")
-            return None
 
         if group_info and user_info:
             target_id = group_info.group_id
@@ -209,13 +210,14 @@ class Maim(Module):
                 info = send_forward_msg(self.robot, self.node(msg), group_id=target_id, source=source)
             else:
                 info = send_forward_msg(self.robot, self.node(msg), user_id=target_id, source=source)
-        else:
-            # 不重复发送消息
-            past_msg = self.robot.self_message[-1]
+
+        # 不重复发送消息
+        if len(self.robot.self_message) > 0:
+            past_msg = self.robot.self_message[-1].get("message")
             if re.sub(r"\[CQ:.*?\]", "", msg) == re.sub(r"\[CQ:.*?\]", "", past_msg):
                 self.warnf("消息与上一条消息相同，未发送")
                 return
-            info = reply_id(self.robot, msg_type, target_id, msg)
+        info = reply_id(self.robot, msg_type, target_id, msg)
         if status_ok(info):
             qq_message_id = info["data"].get("message_id")
             mmc_message_id = message_base.message_info.message_id
@@ -229,7 +231,7 @@ class Maim(Module):
             )
             await self.send_to_maim(message_base)
 
-    def handle_seg(self, segment: Seg) -> str:
+    def handle_seg(self, segment: Seg, group_id: int | None = None) -> str:
         """处理消息结构"""
         def build_payload(payload: str, msg: str, is_reply: bool = False) -> list:
             """构建发送的消息体"""
@@ -257,9 +259,9 @@ class Maim(Module):
                 text = seg.data
                 if match := re.search(r"\([@#](.*?)\)", text):
                     user_name = match.group(1)
-                    user_id = get_user_id(self.robot, user_name, self.event.group_id)
+                    user_id = get_user_id(self.robot, user_name, group_id)
                     if re.search(r"\(#(.*?)\)", text):
-                        poke(self.robot, user_id, self.event.group_id)
+                        poke(self.robot, user_id, group_id)
                         text = re.sub(r"\(#(.*?)\)", "", text)
                     at_msg = f"[CQ:at,qq={user_id}]" if user_id else f"@{user_name}"
                     text = re.sub(r"\(@(.*?)\)", at_msg, text)
@@ -431,6 +433,8 @@ class Maim(Module):
             msg = msg.replace("你收到一个专属红包，请在新版手机QQ查看。", "")
             seg_message.append(Seg(type="text", data=msg))
         elif raw.get("sub_type") == "poke":
+            if not raw.get("group_id"):
+                return seg_message
             txt = raw.get("raw_info")[2]["txt"]
             target_id = raw.get("target_id")
             target_name = get_user_name(self.robot, target_id)

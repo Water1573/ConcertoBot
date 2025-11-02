@@ -11,7 +11,7 @@ import traceback
 import urllib
 
 import httpx
-from src.utils import Module, via, get_user_name
+from src.utils import Module, via, get_img_url, get_user_name, status_ok
 
 class Waifu(Module):
     """抽老婆模块"""
@@ -32,7 +32,6 @@ class Waifu(Module):
     }
     GLOBAL_CONFIG = {
         "pic_path": "waifu",
-        "pic_url": "",
     }
     CONV_CONFIG = {
         "enable": True,
@@ -78,9 +77,12 @@ class Waifu(Module):
         self.save_config()
         waifu_name = waifu.split(".")[0]
         waifu_img = self.get_waifu_file(waifu)
-        self.reply(f"你今天的二次元老婆是{waifu_name}哒~\n[CQ:image,file=base64://{waifu_img}]", reply=True)
+        result = self.reply(f"你今天的二次元老婆是{waifu_name}哒~\n[CQ:image,file=base64://{waifu_img}]", reply=True)
+        if not status_ok(result):
+            qq_url = get_img_url(self.robot, f"base64://{waifu_img}")
+            self.reply(f"你今天的二次元老婆是{waifu_name}哒~\n{qq_url}", reply=True)
 
-    @via(lambda self: self.au(2) and self.config[self.owner_id].get("enable") and self.match(r"查寻?老婆"))
+    @via(lambda self: self.au(2) and self.config[self.owner_id].get("enable") and self.match(r"^查寻?老婆"))
     def check_waifu(self):
         """查询二次元老婆"""
         today = datetime.date.today().strftime("%Y%m%d")
@@ -99,15 +101,15 @@ class Waifu(Module):
         if waifu is None:
             return self.reply(f"未找到{user_name}的老婆信息!", reply=True)
         waifu_name = waifu.split(".")[0]
-        if self.config["pic_url"]:
-            self.reply(f"{user_name}的二次元老婆是{waifu_name}哒~\n{self.config["pic_url"]}{urllib.parse.quote(waifu)}", reply=True)
-        else:
-            waifu_img = self.get_waifu_file(waifu)
-            self.reply(f"{user_name}的二次元老婆是{waifu_name}哒~[CQ:image,file=base64://{waifu_img}]", reply=True)
+        waifu_img = self.get_waifu_file(waifu)
+        result = self.reply(f"{user_name}今天的二次元老婆是{waifu_name}哒~[CQ:image,file=base64://{waifu_img}]", reply=True)
+        if not status_ok(result):
+            qq_url = get_img_url(self.robot, f"base64://{waifu_img}")
+            self.reply(f"{user_name}今天的二次元老婆是{waifu_name}哒~\n{qq_url}", reply=True)
 
     @via(lambda self: self.au(self.config[self.owner_id].get("add_auth"))
          and self.config[self.owner_id].get("enable") 
-         and self.match(r"添加?老婆"))
+         and self.match(r"^添加?老婆"))
     def add_waifu(self):
         """添加二次元老婆"""
         try:

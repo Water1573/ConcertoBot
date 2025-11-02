@@ -28,7 +28,7 @@ class YUJN(Module):
             "热舞 | 获取热舞视频",
             "吊带 | 获取吊带视频",
             "汉服 | 获取汉服视频",
-            "极品狱卒 | 获取极品狱卒视频",
+            "狱卒 | 获取极品狱卒视频",
             "清纯 | 获取清纯视频",
             "快手变装 | 获取快手变装视频",
             "抖音变装 | 获取抖音变装视频",
@@ -63,14 +63,14 @@ class YUJN(Module):
         "抖音变装": f"{YUJN_URL}/api/bianzhuang.php?type=video",
         "萌娃": f"{YUJN_URL}/api/mengwa.php?type=video",
         "穿搭": f"{YUJN_URL}/api/chuanda.php?type=video",
-        "身材": f"{YUJN_URL}/api/wmsc.php?type=video",
+        "完美身材": f"{YUJN_URL}/api/wmsc.php?type=video",
         # 语音类API
         "御姐": f"{YUJN_URL}/api/yujie.php",
         "绿茶": f"{YUJN_URL}/api/lvcha.php",
         "怼人": f"{YUJN_URL}/api/duiren.php",
     }
     PICTURE_PATTERN = "(写真)"
-    VIDEO_PATTERN = "(小姐姐|黑丝|白丝|欲梦|甜妹|双倍快乐|女高|萝莉|玉足|帅哥|热舞|吊带|汉服|狱卒|清纯|快手变装|抖音变装|萌娃|穿搭|身材)"
+    VIDEO_PATTERN = "(小姐姐|黑丝|白丝|欲梦|甜妹|双倍快乐|女高|萝莉|玉足|帅哥|热舞|吊带|汉服|狱卒|清纯|快手变装|抖音变装|萌娃|穿搭|完美身材)"
     VOICE_PATTERN = "(御姐|绿茶|怼人)"
 
     CONV_CONFIG = {

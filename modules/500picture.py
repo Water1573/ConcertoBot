@@ -552,7 +552,8 @@ class Picture(Module):
             for item in data:
                 if (item["vote_positive"] > item["vote_negative"]
                     and item["vote_positive"] > 0
-                    and item["vote_positive"] < 1000):
+                    and item["vote_negative"] < 30
+                    and item["vote_positive"] < 100):
                     result.append(item)
             self.printf(f"共请求到{len(result)}条有效的帖子")
             return result
