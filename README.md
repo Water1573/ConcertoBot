@@ -29,8 +29,8 @@
 - 方便快捷的随机文本选择和回复
 - 对图片信息的终端彩色像素画显示
 <p align="center">
-  <img src="example/1.png" width="500">
-  <img src="example/2.png" width="500">
-  <img src="example/3.png" width="500">
-  <img src="example/4.png" width="500">
+  <img src="example/1.jpg" width="500">
+  <img src="example/2.jpg" width="500">
+  <img src="example/3.jpg" width="500">
+  <img src="example/4.jpg" width="500">
 </p>
