@@ -450,14 +450,14 @@ class Chat(Module):
     @via(lambda self: self.at_or_private() and self.au(2) and self.match(r"^成员列表$"))
     def show_label(self):
         """成员列表"""
-        msg = "========成员列表========"
+        nodes = []
         for uid, user in self.config[self.owner_id]["users"].items():
-            msg += f"\nQQ: {uid}"
+            msg = f"QQ: {uid}"
             msg += f"\n昵称: {user["nickname"]}"
             label = user["label"] if user["label"] else "无"
             msg += f"\n称号: {label}"
-            msg += "\n======================="
-        self.reply(msg)
+            nodes.append(self.node(msg))
+        self.reply_forward(nodes, source="成员列表")
 
     @via(lambda self: self.au(1) and not self.is_private() and self.match(r"^\[CQ:.*\]?(一键发电|❤️\s?)+$") and self.is_reply())
     def praise(self):

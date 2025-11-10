@@ -1286,14 +1286,17 @@ class Module:
         """快捷回复消息"""
         if self.robot.config.is_always_reply:
             reply = True
-        return reply_event(self.robot, self.event, msg, reply=reply, force=force)
+        result = reply_event(self.robot, self.event, msg, reply=reply, force=force)
+        if not status_ok(result):
+            self.errorf(result.get("message"))
+        return result
 
     def reply_forward(self, nodes: list, source=None, summary=None):
         """快捷回复转发消息"""
-        if self.event.group_id:
-            return send_forward_msg(self.robot, nodes, group_id=self.event.group_id, source=source, summary=summary)
-        else:
-            return send_forward_msg(self.robot, nodes, user_id=self.event.user_id, source=source, summary=summary)
+        result = send_forward_msg(self.robot, nodes, self.event.group_id, self.event.user_id, source, summary)
+        if not status_ok(result):
+            self.errorf(result.get("message"))
+        return result
 
     def get_reply(self, ) -> str | None:
         """读取可能存在的回复消息"""

@@ -1,4 +1,4 @@
-"""抖音视频模块"""
+"""小红书视频模块"""
 
 import re
 import time
@@ -9,24 +9,24 @@ import httpx
 
 from src.utils import Module, set_emoji, via
 
-class Tiktok(Module):
-    """抖音视频模块"""
+class Rednote(Module):
+    """小红书视频模块"""
 
-    ID = "Tiktok"
-    NAME = "抖音视频模块"
+    ID = "Rednote"
+    NAME = "小红书视频模块"
     HELP = {
         0: [
-            "本模块用于解析抖音视频，回复视频链接、小程序并@即可获取视频文件",
+            "本模块用于解析小红书视频，回复视频链接、小程序并@即可获取视频文件",
         ],
     }
 
     def __init__(self, event, auth = 0):
-        self.video_pattern = r"(https?://[^\s&;,\[]*(douyin.com|tiktok.com)/[^\s&;,\u4e00-\u9fff\[]*)"
+        self.video_pattern = r"(https?://[^\s&;,\[]*(xhslink.com/o|xiaohongshu.com/explore)[^\s&;,\u4e00-\u9fff\[]*)"
         super().__init__(event, auth)
 
     @via(lambda self: self.at_or_private() and self.au(2)
             and (self.is_reply() or self.match(self.video_pattern)), success=False)
-    def tiktok_download(self):
+    def rednote_download(self):
         """下载视频"""
         url = ""
         if match := self.match(rf"({self.video_pattern})"):
@@ -47,15 +47,15 @@ class Tiktok(Module):
             self.reply(msg)
         except Exception as e:
             self.errorf(traceback.format_exc())
-            return self.reply_forward(self.node(f"{e}"), source="抖音视频处理失败")
+            return self.reply_forward(self.node(f"{e}"), source="小红书视频处理失败")
 
     def get_play_url(self, url: str) -> str:
         """获取视频信息"""
         resp = httpx.get(url, timeout=10, follow_redirects=True, headers={"User-Agent": "Mozilla/5.0 (Linux; Android 6.0;)"})
-        match = re.search(r"\"url_list\"\s*:\s*\[\"([^\]]+snssdk[^\]]+)\"\]", resp.text)
+        match = re.search(r"\"backupUrls\":\s*\[\"(.*?)\"", resp.text)
+        print(match)
         url = match.group(1)
         url = url.encode("utf-8").decode("unicode_escape")
-        url = url.replace("playwm", "play")
         return url
 
     def retry(self, func: Callable[..., Any], name="", max_retries=5, delay=1, failed_ok=True) -> Any:

@@ -51,8 +51,8 @@ class Ytdlp(Module):
     }
 
     def __init__(self, event, auth = 0):
-        # self.video_pattern = r"(https?://[^\s\[@&;,\"]*(b23.tv|bilibili.com/video|youtu.be|youtube.com|v.qq.com|douyin.com|tiktok.com)[^\s\[@&;,\"]*)"
-        self.video_pattern = r"(https?://[^\s\[@&;,\"]*(b23.tv|bilibili.com/video|youtu.be|youtube.com|v.qq.com)[^\s\[@&;,\"]*)"
+        # self.video_pattern = r"(https?://[^\s&;,\[]*(b23.tv|bilibili.com/video|youtu.be|youtube.com|v.qq.com|douyin.com|tiktok.com)[^\s&;,\[]*)"
+        self.video_pattern = r"(https?://[^\s&;,\[]*(b23.tv|bilibili.com/video|youtu.be|youtube.com|v.qq.com)[^\s&;,\u4e00-\u9fff\[]*)"
         super().__init__(event, auth)
 
     @via(lambda self: self.at_or_private() and self.au(2)
