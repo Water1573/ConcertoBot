@@ -56,13 +56,15 @@ class Message(Module):
             except Exception:
                 pass
             help_text = ""
+            max_level = 0
             for i in range(4):
                 if auth_level <= i or i == 0:
+                    max_level = i
                     for text in mod.HELP.get(i, []):
                         help_text += f"{text}\n"
                         if i == 0:
                             help_text += "\n"
-            if help_text:
+            if help_text and max_level > 0:
                 help_text = f"{mod.NAME}帮助\n\n{help_text}"
                 help_list.append(self.node(help_text.strip()))
         nodes = help_list

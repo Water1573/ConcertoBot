@@ -409,17 +409,25 @@ class Chat(Module):
         else:
             self.reply("什么也没有哦~")
 
-    @via(lambda self: self.at_or_private() and self.au(2) and self.match(r"^\s*\[CQ:reply,id=([^\]]+?)\]\s*$"), success=False)
+    @via(lambda self: self.at_or_private() and self.au(2)
+          and (self.match(r"直链\s?\[CQ:image\S*\]")
+               or self.match(r"\[CQ:reply,id=([^\]]+?)\]\s?(直链)?$")), success=False)
     def sticker_url(self):
         """获取表情链接"""
-        msg = self.get_reply()
-        if msg and re.match(r"\[CQ:image.*url=([^,\]]+?),.*\]", msg):
-            url = re.match(r"\[CQ:image.*url=([^,\]]+?),.*\]", msg).group(1)
-            if len(url) > 100:
-                self.reply_forward(self.node(url), source="图片直链")
-            else:
-                self.reply(url, reply=True)
-            self.success = True
+        url = ""
+        if match := re.search(r"\[CQ:image.*url=([^,\]]+?),.*\]", self.event.text):
+            url = match.group(1)
+        elif self.match(r"\[CQ:reply,id=([^\]]+?)\]"):
+            msg = self.get_reply()
+            if msg and re.search(r"\[CQ:image.*url=([^,\]]+?),.*\]", msg):
+                url = re.search(r"\[CQ:image.*url=([^,\]]+?),.*\]", msg).group(1)
+        if not url:
+            return
+        elif len(url) > 100:
+            self.reply_forward(self.node(url), source="图片直链")
+        else:
+            self.reply(url, reply=True)
+        self.success = True
 
     @via(lambda self: self.au(2) and self.at_or_private() and self.match(r"(\S+?)(又|也|同时)能?被?(称|叫)(为|做)?(\S+)$"))
     def set_label(self):
