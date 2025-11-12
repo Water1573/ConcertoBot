@@ -26,8 +26,9 @@ class Waifu(Module):
         ],
         2: [
             "抽老婆 | 看看今天的二次元老婆是谁",
-            "添老婆+人物名称+图片 | 添加老婆",
+            "添老婆+老婆名+图片 | 添加老婆",
             "查老婆@某人 | 查询别人老婆",
+            "查老婆+老婆名 | 查询老婆是否存在",
         ],
     }
     GLOBAL_CONFIG = {
@@ -45,8 +46,8 @@ class Waifu(Module):
     @via(lambda self: self.group_at() and self.au(1) and self.match(r"^(开启|打开|启用|允许|关闭|禁止|不允许|取消)?抽老婆$"))
     def toggle(self):
         """设置抽老婆"""
-        flag = self.config[self.owner_id]["repeat"]
-        text = "开启" if self.config[self.owner_id]["repeat"] else "关闭"
+        flag = self.config[self.owner_id]["enable"]
+        text = "开启" if self.config[self.owner_id]["enable"] else "关闭"
         if self.match(r"(开启|打开|启用|允许)"):
             flag = True
             text = "开启"
@@ -58,23 +59,59 @@ class Waifu(Module):
         self.save_config()
         self.reply(msg, reply=True)
 
+    def get_today_waifus(self):
+        """获取今天已分配的老婆列表"""
+        today = datetime.date.today().strftime("%Y%m%d")
+        waifu_data = self.config[self.owner_id]["waifu"]
+        
+        # 从waifu数据中筛选出今天分配的老婆
+        today_waifus = []
+        for user_id, (waifu_name, date) in waifu_data.items():
+            if date == today:
+                today_waifus.append(waifu_name)
+
+        return today_waifus
+
+    def get_available_waifus(self):
+        """获取今天可用的老婆列表"""
+        pic_path = self.get_path()
+        exts = (".jpg", ".jpeg", ".png")
+        files = [f for f in os.listdir(pic_path) if f.lower().endswith(exts)]
+
+        if not files:
+            return []
+
+        # 排除今天已经分配过的老婆
+        today_waifus = self.get_today_waifus()
+        available_waifus = [f for f in files if f not in today_waifus]
+        
+        return available_waifus
+
     @via(lambda self: self.au(2) and self.config[self.owner_id].get("enable") and self.match(r"^抽取?老婆$"))
     def draw_waifu(self):
         """抽取二次元老婆"""
         today = datetime.date.today().strftime("%Y%m%d")
         user_id = self.event.user_id
-        waives = self.config[self.owner_id]["waifu"]
+        config = self.config[self.owner_id]
         waifu = None
-        if user_id in waives:
-            waifu_name, data_date = waives[user_id]
+        
+        # 检查用户今天是否已经抽过老婆
+        if user_id in config["waifu"]:
+            waifu_name, data_date = config["waifu"][user_id]
             if data_date == today:
                 waifu = waifu_name
+        
         if waifu is None:
-            waifu = self.random_waifu_choice()
-        if waifu is None:
-            return self.reply("未读取到任何老婆!", reply=True)
-        waives[user_id] = [waifu, today]
-        self.save_config()
+            # 从可用老婆中随机选择
+            available_waifus = self.get_available_waifus()
+            if not available_waifus:
+                return self.reply("今天的老婆已经被抽光啦，明天再来吧!", reply=True)
+            
+            waifu = random.choice(available_waifus)
+            # 记录用户今天的老婆
+            config["waifu"][user_id] = [waifu, today]
+            self.save_config()
+        
         waifu_name = waifu.split(".")[0]
         waifu_img = self.get_waifu_file(waifu)
         result = self.reply(f"你今天的二次元老婆是{waifu_name}哒~\n[CQ:image,file=base64://{waifu_img}]", reply=True)
@@ -87,25 +124,54 @@ class Waifu(Module):
         """查询二次元老婆"""
         today = datetime.date.today().strftime("%Y%m%d")
         user_id = self.event.user_id
-        if match := self.match(r"\[CQ:at,qq=(.*?)\]"):
+        
+        # 检查是否是查询用户老婆
+        if match := re.search(r"\[CQ:at,qq=(.*?)\]", self.event.msg):
             user_id = match.group(1)
-        user_name = get_user_name(self.robot, user_id)
-        waives = self.config[self.owner_id]["waifu"]
-        waifu = None
-        if user_id in waives:
-            waifu_name, data_date = waives[user_id]
-            if data_date == today:
-                waifu = waifu_name
+            user_name = get_user_name(self.robot, user_id)
+            waives = self.config[self.owner_id]["waifu"]
+            waifu = None
+            
+            if user_id in waives:
+                waifu_name, data_date = waives[user_id]
+                if data_date == today:
+                    waifu = waifu_name
+                else:
+                    return self.reply(f"{user_name}的老婆已过期!", reply=True)
+            
+            if waifu is None:
+                return self.reply(f"未找到{user_name}的老婆信息!", reply=True)
+            
+            waifu_name = waifu.split(".")[0]
+            waifu_img = self.get_waifu_file(waifu)
+            result = self.reply(f"{user_name}今天的二次元老婆是{waifu_name}哒~[CQ:image,file=base64://{waifu_img}]", reply=True)
+            if not status_ok(result):
+                qq_url = get_img_url(self.robot, f"base64://{waifu_img}")
+                self.reply(f"{user_name}今天的二次元老婆是{waifu_name}哒~\n{qq_url}", reply=True)
+        
+        # 检查是否是查询老婆是否存在
+        else:
+            # 提取老婆名称
+            waifu_name = re.sub(r"查寻?老婆", "", self.event.msg).strip()
+            if not waifu_name:
+                return self.reply("请输入要查询的老婆名称~", reply=True)
+
+            # 检查老婆是否存在
+            pic_path = self.get_path()
+            exts = (".jpg", ".jpeg", ".png")
+            exists = False
+
+            for ext in exts:
+                file_path = os.path.join(pic_path, f"{waifu_name}{ext}")
+                if os.path.exists(file_path):
+                    exists = True
+                    break
+
+            if exists:
+                waifu_img = self.get_waifu_file(f"{waifu_name}{ext}")
+                self.reply(f"{waifu_name}已存在~[CQ:image,file=base64://{waifu_img}]", reply=True)
             else:
-                return self.reply(f"查询到{user_name}的老婆已过期!", reply=True)
-        if waifu is None:
-            return self.reply(f"未找到{user_name}的老婆信息!", reply=True)
-        waifu_name = waifu.split(".")[0]
-        waifu_img = self.get_waifu_file(waifu)
-        result = self.reply(f"{user_name}今天的二次元老婆是{waifu_name}哒~[CQ:image,file=base64://{waifu_img}]", reply=True)
-        if not status_ok(result):
-            qq_url = get_img_url(self.robot, f"base64://{waifu_img}")
-            self.reply(f"{user_name}今天的二次元老婆是{waifu_name}哒~\n{qq_url}", reply=True)
+                self.reply(f"{waifu_name}不存在，可以添加哦~", reply=True)
 
     @via(lambda self: self.au(self.config[self.owner_id].get("add_auth"))
          and self.config[self.owner_id].get("enable") 
@@ -115,10 +181,11 @@ class Waifu(Module):
         try:
             waifu_name = re.sub(r"(添加?老婆|\[.*?\])", "", self.event.msg).strip()
             ret = self.match(r"\[CQ:image,file=(.*)?,url=(.*),.*\]")
-            if not ret:
-                return self.reply("请注明二次元老婆名称~")
+            if not waifu_name:
+                return self.reply("请注明二次元老婆名称~", reply=True)
             elif not ret:
-                return self.reply("请附带二次元老婆图片~")
+                return self.reply("请附带二次元老婆图片~", reply=True)
+            
             url = html.unescape(ret.group(2))
             self.save_waifu(url, waifu_name)
             self.reply(f"{waifu_name}已增加~", reply=True)
@@ -136,18 +203,8 @@ class Waifu(Module):
         os.makedirs(path, exist_ok=True)
         return path       
 
-    def random_waifu_choice(self):
-        """随机挑选二次元老婆"""
-        pic_path = self.get_path()
-        exts = (".jpg", ".jpeg", ".png", ".webp")
-        files = [f for f in os.listdir(pic_path) if f.lower().endswith(exts)]
-        if len(files) == 0:
-            return None
-        filename = random.choice(files)
-        return filename
-
     def get_waifu_file(self, filename: str):
-        """下载二次元老婆"""
+        """读取二次元老婆"""
         pic_path = self.get_path()
         filepath = os.path.join(pic_path, filename)
         with open(filepath, "rb") as f:
@@ -162,4 +219,3 @@ class Waifu(Module):
         file_path = os.path.join(pic_path, f"{name}.{fmt}")
         with open(file_path, "wb") as f:
             f.write(data.content)
-                    
