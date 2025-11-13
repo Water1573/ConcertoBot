@@ -21,7 +21,7 @@ class Rednote(Module):
     }
 
     def __init__(self, event, auth = 0):
-        self.video_pattern = r"(https?://[^\s&;,\[]*(xhslink.com/o|xiaohongshu.com/explore)[^\s&;,\u4e00-\u9fff\[]*)"
+        self.video_pattern = r"(https?://[^\s&;,\[]*(xhslink.com/o|xiaohongshu.com/explore)[^\s&;,\"\u4e00-\u9fff\[]*)"
         super().__init__(event, auth)
 
     @via(lambda self: self.at_or_private() and self.au(2)
@@ -52,11 +52,12 @@ class Rednote(Module):
     def get_play_url(self, url: str) -> str:
         """获取视频信息"""
         resp = httpx.get(url, timeout=10, follow_redirects=True, headers={"User-Agent": "Mozilla/5.0 (Linux; Android 6.0;)"})
-        match = re.search(r"\"backupUrls\":\s*\[\"(.*?)\"", resp.text)
-        print(match)
-        url = match.group(1)
-        url = url.encode("utf-8").decode("unicode_escape")
-        return url
+        if match := re.search(r"\"backupUrls\":\s*\[\"(.*?)\"", resp.text):
+            url = match.group(1)
+            url = url.encode("utf-8").decode("unicode_escape")
+            return url
+        else:
+            raise ReferenceError("未找到有效的视频链接")
 
     def retry(self, func: Callable[..., Any], name="", max_retries=5, delay=1, failed_ok=True) -> Any:
         """多次尝试执行"""
