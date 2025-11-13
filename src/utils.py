@@ -1308,7 +1308,7 @@ class Module:
         if not status_ok(reply_msg):
             return
         msg =  html.unescape(reply_msg["data"]["message"])
-        msg = re.sub(r"[\r\n]+", "", msg)
+        msg = re.sub(r"[\\\r\n]+", "", msg)
         return msg
 
     def printf(self, msg, end="\n", console=True, flush=False, level="INFO"):

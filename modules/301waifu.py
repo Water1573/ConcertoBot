@@ -8,8 +8,6 @@ import datetime
 import re
 import traceback
 
-import urllib
-
 import httpx
 from src.utils import Module, via, get_img_url, get_user_name, status_ok
 
@@ -27,6 +25,7 @@ class Waifu(Module):
         2: [
             "抽老婆 | 看看今天的二次元老婆是谁",
             "添老婆+老婆名+图片 | 添加老婆",
+            "删老婆+老婆名 | 删除老婆",
             "查老婆@某人 | 查询别人老婆",
             "查老婆+老婆名 | 查询老婆是否存在",
         ],
@@ -156,20 +155,28 @@ class Waifu(Module):
             if not waifu_name:
                 return self.reply("请输入要查询的老婆名称~", reply=True)
 
-            # 检查老婆是否存在
+            # 检查老婆是否存在并获取所有相关文件
             pic_path = self.get_path()
             exts = (".jpg", ".jpeg", ".png")
-            exists = False
+            waifu_files = []
 
             for ext in exts:
                 file_path = os.path.join(pic_path, f"{waifu_name}{ext}")
                 if os.path.exists(file_path):
-                    exists = True
-                    break
+                    waifu_files.append(f"{waifu_name}{ext}")
 
-            if exists:
-                waifu_img = self.get_waifu_file(f"{waifu_name}{ext}")
-                self.reply(f"{waifu_name}已存在~[CQ:image,file=base64://{waifu_img}]", reply=True)
+            if waifu_files:
+                # 如果只有一个文件，正常回复
+                if len(waifu_files) == 1:
+                    waifu_img = self.get_waifu_file(waifu_files[0])
+                    self.reply(f"{waifu_name}已存在~[CQ:image,file=base64://{waifu_img}]", reply=True)
+                else:
+                    # 如果有多个文件，回复所有版本
+                    reply_msg = f"{waifu_name}已存在，共有{len(waifu_files)}个格式："
+                    for waifu_file in waifu_files:
+                        waifu_img = self.get_waifu_file(waifu_file)
+                        reply_msg += f"\n[格式: {waifu_file.split('.')[-1]}] [CQ:image,file=base64://{waifu_img}]"
+                    self.reply(reply_msg, reply=True)
             else:
                 self.reply(f"{waifu_name}不存在，可以添加哦~", reply=True)
 
@@ -188,10 +195,73 @@ class Waifu(Module):
             
             url = html.unescape(ret.group(2))
             self.save_waifu(url, waifu_name)
-            self.reply(f"{waifu_name}已增加~", reply=True)
+            
+            # 添加成功后，检查该老婆名是否有多个版本
+            pic_path = self.get_path()
+            exts = (".jpg", ".jpeg", ".png")
+            waifu_files = []
+            
+            for ext in exts:
+                file_path = os.path.join(pic_path, f"{waifu_name}{ext}")
+                if os.path.exists(file_path):
+                    waifu_files.append(f"{waifu_name}{ext}")
+            
+            # 回复添加成功消息并显示所有版本
+            if len(waifu_files) == 1:
+                self.reply(f"{waifu_name}已增加~", reply=True)
+            else:
+                reply_msg = f"{waifu_name}已增加~ 当前共有{len(waifu_files)}个格式："
+                for waifu_file in waifu_files:
+                    waifu_img = self.get_waifu_file(waifu_file)
+                    reply_msg += f"\n[格式: {waifu_file.split('.')[-1]}] [CQ:image,file=base64://{waifu_img}]"
+                self.reply(reply_msg, reply=True)
+                
         except Exception:
             self.errorf(traceback.format_exc())
             self.reply(f"{waifu_name}添加失败!", reply=True)
+
+    @via(lambda self: self.au(self.config[self.owner_id].get("add_auth"))
+        and self.config[self.owner_id].get("enable") 
+        and self.match(r"^删(除)?老婆"))
+    def del_waifu(self):
+        """删除二次元老婆（必须指定格式）"""
+        try:
+            # 提取老婆名称和格式
+            waifu_input = re.sub(r"删(除)?老婆", "", self.event.msg).strip()
+            if not waifu_input:
+                return self.reply("请输入要删除的老婆名称和格式，例如：删老婆 老婆名.jpg", reply=True)
+
+            # 支持的图片格式
+            supported_formats = [".jpg", ".jpeg", ".png"]
+
+            # 检查是否指定了格式
+            target_format = None
+            for fmt in supported_formats:
+                if waifu_input.lower().endswith(fmt):
+                    target_format = fmt
+                    break
+
+            if not target_format:
+                return self.reply("请指定要删除的图片格式，例如：删老婆 老婆名.jpg\n支持的格式有：jpg、jpeg、png", reply=True)
+
+            # 提取老婆名（移除格式后缀）
+            waifu_name = waifu_input[:-len(target_format)]
+            if not waifu_name:
+                return self.reply("请输入有效的老婆名称", reply=True)
+
+            # 查找并删除指定格式的文件
+            pic_path = self.get_path()
+            file_path = os.path.join(pic_path, f"{waifu_name}{target_format}")
+
+            if os.path.exists(file_path):
+                os.remove(file_path)
+                self.reply(f"成功删除老婆 {waifu_name}{target_format}", reply=True)
+            else:
+                self.reply(f"未找到老婆 {waifu_name}{target_format}", reply=True)
+                    
+        except Exception:
+            self.errorf(traceback.format_exc())
+            self.reply(f"{waifu_input}删除失败!", reply=True)
 
     def get_path(self):
         """获取二次元老婆路径"""

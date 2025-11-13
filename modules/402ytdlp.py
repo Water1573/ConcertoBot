@@ -57,7 +57,7 @@ class Ytdlp(Module):
 
     @via(lambda self: self.at_or_private() and self.au(2)
             and self.config[self.owner_id]["enable"]
-            and (self.is_reply() or self.match("视频详情")), success=False)
+            and self.match("视频详情"), success=False)
     def video_info(self):
         """获取视频详情"""
         url = ""
