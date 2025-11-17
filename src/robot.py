@@ -19,7 +19,18 @@ import httpx
 from src import api
 from src.config import Config
 from src.utils import (
-    Event, Module, format_to_log, handle_placeholder, import_json, msg_img2char, reply_event, scan_missing_modules, simplify_traceback, receive_msg, send_msg, status_ok
+    Event,
+    Module,
+    format_to_log,
+    handle_placeholder,
+    import_json,
+    msg_img2char,
+    reply_event,
+    scan_missing_modules,
+    simplify_traceback,
+    receive_msg,
+    send_msg,
+    status_ok,
 )
 from src.command import ExecuteCmd
 
@@ -227,15 +238,16 @@ class Concerto:
         except Exception:
             if not self.config.is_error_reply:
                 return
+            error_msg = f"%FATAL_ERROR%\n{simplify_traceback(traceback.format_exc())}"
             if event.group_id == "":
-                reply_event(self, event, f"%FATAL_ERROR%\n{simplify_traceback(traceback.format_exc())}")
+                reply_event(self, event, error_msg)
             else:
                 if len(self.config.admin_list):
-                    send_msg(self, "private", self.config.admin_list[0], f"%FATAL_ERROR%\n{simplify_traceback(traceback.format_exc())}")
+                    send_msg(self, "private", self.config.admin_list[0], error_msg)
                 elif event.group_id not in self.config.rev_group:
                     return
                 else:
-                    reply_event(self, event, f"%FATAL_ERROR%\n{simplify_traceback(traceback.format_exc())}")
+                    reply_event(self, event, error_msg)
 
     def message(self, event: Event, auth=3):
         """处理消息事件

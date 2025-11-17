@@ -45,6 +45,7 @@ from src.utils import (
     reply_id,
     send_forward_msg,
     send_group_ai_record,
+    send_msg,
     set_group_ban,
     set_group_kick,
     set_group_whole_ban,
@@ -94,6 +95,7 @@ class Maim(Module):
         route_config = RouteConfig({self.config["platform"]: target_config})
         self.router = Router(route_config)
         self.router.register_class_handler(self.handle_maimbot_message)
+        self.failed_times = 0
         self.listening()
 
     def premise(self):
@@ -528,9 +530,18 @@ class Maim(Module):
             send_status = await self.router.send_message(msg)
             if not send_status:
                 raise RuntimeError("路由未正确配置或连接异常")
+            self.failed_times = 0
             return send_status
         except Exception:
-            self.errorf(f"请检查与MaiMBot之间的连接, 发送消息失败: {traceback.format_exc()}")
+            msg = f"请检查与MaiMBot之间的连接, 发送消息失败: {traceback.format_exc()}"
+            self.errorf(msg)
+            self.failed_times += 1
+            if not self.robot.config.is_error_reply:
+                return
+            admin_list = self.robot.config.admin_list
+            if self.failed_times == 3 and len(admin_list):
+                send_msg(self, "private", admin_list[0], msg)
+            
 
     async def construct_message(self, event: Event = None) -> MessageBase | None:
         """根据平台事件构造标准 MessageBase"""
