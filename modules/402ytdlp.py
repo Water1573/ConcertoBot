@@ -104,7 +104,7 @@ class Ytdlp(Module):
         elif self.match("视频详情"):
             return
         self.success = True
-        true_path = ""
+        file_path = ""
         tasks = self.config[self.owner_id]["tasks"]
         opts = self.get_options(url)
         try:
@@ -156,8 +156,7 @@ class Ytdlp(Module):
             else:
                 set_emoji(self.robot, self.event.msg_id, 60)
             ext = self.config["ydl"]["merge_output_format"]
-            true_path = Path(self.download_video(url, opts)).as_posix()
-            file_path = true_path
+            file_path = Path(self.download_video(url, opts)).as_posix()
             if not os.path.exists(file_path):
                 file_path = f"{file_path}.{ext}"
             if not os.path.exists(file_path):
@@ -168,9 +167,13 @@ class Ytdlp(Module):
             if file_size > 100 * 1024 * 1024 and opts["format"] != "wv+ba/w":
                 self.reply(f"视频体积太大({calc_size(file_size)})，尝试使用最低画质下载~", reply=True)
                 # 视频大小太大则尝试使用最低画质下载
-                os.remove(true_path)
+                if os.path.exists(file_path):
+                    os.remove(file_path)
                 opts["format"] = "wv+ba/w"
                 self.download_video(url, opts)
+                if not os.path.exists(file_path):
+                    file_path = f"{file_path}.{ext}"
+                video_name = file_path.split("/").pop()
                 file_size = os.path.getsize(file_path)
                 if file_size > 100 * 1024 * 1024:
                     # 视频大小依然太大则上传失败
@@ -197,11 +200,12 @@ class Ytdlp(Module):
             nodes = self.node(f"{format_to_log(e.msg)}")
             return self.reply_forward(nodes, source="视频解析失败")
         except Exception as e:
+            self.errorf(traceback.format_exc())
             nodes = self.node(f"{e}")
             return self.reply_forward(nodes, source="视频处理失败")
         finally:
-            if os.path.exists(true_path):
-                os.remove(true_path)
+            if os.path.exists(file_path):
+                os.remove(file_path)
 
     @via(
         lambda self: self.at_or_private() and self.au(1)

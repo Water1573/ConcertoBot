@@ -101,6 +101,7 @@ class Maim(Module):
     def premise(self):
         if self.ID in self.robot.persist_mods:
             maim: Maim = self.robot.persist_mods[self.ID]
+            self.failed_times = maim.failed_times
             self.router = maim.router
             self.loop = maim.loop
         return self.config["url"]
@@ -204,20 +205,21 @@ class Maim(Module):
         else:
             self.errorf("无法识别的消息类型")
             return
-        if len(msg) > 100 and "CQ:" not in msg:
-            source = msg.split("\n")[0]
-            if msg_type == "group":
-                info = send_forward_msg(self.robot, self.node(msg), group_id=target_id, source=source)
-            else:
-                info = send_forward_msg(self.robot, self.node(msg), user_id=target_id, source=source)
-
         # 不重复发送消息
         if len(self.robot.self_message) > 0:
             past_msg = self.robot.self_message[-1].get("message")
             if re.sub(r"\[CQ:.*?\]", "", msg) == re.sub(r"\[CQ:.*?\]", "", past_msg):
                 self.warnf("消息与上一条消息相同，未发送")
                 return
-        info = reply_id(self.robot, msg_type, target_id, msg)
+        info = None
+        if len(msg) > 100 and "CQ:" not in msg:
+            source = msg.split("\n")[0]
+            if msg_type == "group":
+                info = send_forward_msg(self.robot, self.node(msg), group_id=target_id, source=source)
+            else:
+                info = send_forward_msg(self.robot, self.node(msg), user_id=target_id, source=source)
+        else:
+            info = reply_id(self.robot, msg_type, target_id, msg)
         if status_ok(info):
             qq_message_id = info["data"].get("message_id")
             mmc_message_id = message_base.message_info.message_id
