@@ -542,7 +542,7 @@ class Maim(Module):
                 return
             admin_list = self.robot.config.admin_list
             if self.failed_times == 3 and len(admin_list):
-                send_msg(self, "private", admin_list[0], msg)
+                send_msg(self.robot, "private", admin_list[0], msg)
             
 
     async def construct_message(self, event: Event = None) -> MessageBase | None:

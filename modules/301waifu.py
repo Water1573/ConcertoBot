@@ -175,7 +175,7 @@ class Waifu(Module):
                     reply_msg = f"{waifu_name}已存在，共有{len(waifu_files)}个格式："
                     for waifu_file in waifu_files:
                         waifu_img = self.get_waifu_file(waifu_file)
-                        reply_msg += f"\n[格式: {waifu_file.split('.')[-1]}] [CQ:image,file=base64://{waifu_img}]"
+                        reply_msg += f"\n[{waifu_file}] [CQ:image,file=base64://{waifu_img}]"
                     self.reply(reply_msg, reply=True)
             else:
                 self.reply(f"{waifu_name}不存在，可以添加哦~", reply=True)
