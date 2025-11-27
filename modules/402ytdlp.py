@@ -20,7 +20,8 @@ class Ytdlp(Module):
     NAME = "视频下载模块"
     HELP = {
         0: [
-            "本模块主要是为了方便在不打开视频链接的情况下观看视频使用，回复视频链接、小程序并@即可获取视频文件，如果同时带有“视频详情”四个字，则仅解析视频详情",
+            "本模块主要是为了方便在不打开视频链接的情况下观看视频使用，回复视频链接、小程序并@即可获取视频文件，如果同时带有“视频详情”四个字，则仅解析视频详情"
+            "\n本模块基于ytdlp，支持多数网站的视频下载",
         ],
         1: [
             "[开启|关闭]视频解析 | 开关本模块功能",
@@ -51,8 +52,8 @@ class Ytdlp(Module):
     }
 
     def __init__(self, event, auth = 0):
-        # self.video_pattern = r"(https?://[^\s&;,\[]*(b23.tv|bilibili.com/video|youtu.be|youtube.com|v.qq.com|douyin.com|tiktok.com)[^\s&;,\"\[]*)"
-        self.video_pattern = r"(https?://[^\s&;,\[]*(b23.tv|bilibili.com/video|youtu.be|youtube.com|v.qq.com)[^\s&;,\"\u4e00-\u9fff\[]*)"
+        # self.video_pattern = r"(https?://[^\s&;,\[]*(b23.tv|bilibili.com/video|youtu.be|youtube.com|x.com|v.qq.com|douyin.com|tiktok.com)[^\s&;,\"\[]*)"
+        self.video_pattern = r"(https?://[^\s&;,\[]*(b23.tv|bilibili.com/video|youtu.be|x.com|youtube.com|v.qq.com)[^\s&;,\"\u4e00-\u9fff\[]*)"
         super().__init__(event, auth)
 
     @via(lambda self: self.at_or_private() and self.au(2)
