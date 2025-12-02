@@ -27,6 +27,7 @@ from src.utils import (
     msg_img2char,
     reply_event,
     scan_missing_modules,
+    send_forward_msg,
     simplify_traceback,
     receive_msg,
     send_msg,
@@ -242,12 +243,11 @@ class Concerto:
             if event.group_id == "":
                 reply_event(self, event, error_msg)
             else:
-                if len(self.config.admin_list):
-                    send_msg(self, "private", self.config.admin_list[0], error_msg)
-                elif event.group_id not in self.config.rev_group:
+                if self.admin_notify(error_msg):
                     return
-                else:
-                    reply_event(self, event, error_msg)
+                if event.group_id not in self.config.rev_group:
+                    return
+                reply_event(self, event, error_msg)
 
     def message(self, event: Event, auth=3):
         """处理消息事件
@@ -393,6 +393,19 @@ class Concerto:
         future = asyncio.run_coroutine_threadsafe(func, self.loop)
         result = future.result()
         return result
+
+    def admin_notify(self, msg, nodes: None|dict = None) -> bool:
+        """向管理员发送通知消息"""
+        if not self.config.is_error_reply:
+            return
+        if len(self.config.admin_list) == 0:
+            self.warnf("无可用管理员进行通知")
+            return False
+        if nodes:
+            send_forward_msg(self, nodes, None, self.config.admin_list[0], msg)
+        else:
+            send_msg(self, "private", self.config.admin_list[0], msg)
+        return True
 
     def printf(self, msg, end="\n", console=True, flush=False, level="INFO"):
         """

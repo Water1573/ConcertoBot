@@ -47,7 +47,9 @@ class Tiktok(Module):
             self.reply(msg)
         except Exception as e:
             self.errorf(traceback.format_exc())
-            return self.reply_forward(self.node(f"{e}"), source="抖音视频处理失败")
+            nodes = self.node(f"{e}")
+            self.robot.admin_notify("视频处理失败", nodes)
+            return self.reply_forward(nodes, source="抖音视频处理失败")
 
     def get_play_url(self, url: str) -> str:
         """获取视频信息"""

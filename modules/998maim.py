@@ -535,17 +535,17 @@ class Maim(Module):
             self.failed_times = 0
             return send_status
         except Exception as e:
-            if isinstance(e, RuntimeError):
-                self.errorf(e)
-            else:
-                msg = f"发送消息失败: {traceback.format_exc()}"
-                self.errorf(msg)
             self.failed_times += 1
-            if not self.robot.config.is_error_reply:
-                return
-            admin_list = self.robot.config.admin_list
-            if self.failed_times == 3 and len(admin_list):
-                send_msg(self.robot, "private", admin_list[0], msg)
+            error_msg = f"发送消息失败: {traceback.format_exc()}"
+            if isinstance(e, RuntimeError):
+                error_msg = f"{e}"
+            self.errorf(f"{error_msg}(第{self.failed_times}次)")
+            if self.failed_times == 3:
+                error_msg = (f"多次尝试发送消息后失败，请重启应用！"
+                             f"\n{msg.message_info.group_info.group_name}"
+                             f"|{msg.message_info.user_info.user_nickname}"
+                             f":{msg.raw_message}")
+                self.robot.admin_notify(error_msg)
             
 
     async def construct_message(self, event: Event = None) -> MessageBase | None:

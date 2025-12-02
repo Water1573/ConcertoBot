@@ -398,7 +398,7 @@ def build_msg(text: str):
         }
     return data
 
-def build_node(*args, **kwargs):
+def build_node(*args, **kwargs) -> dict:
     """
     生成一个转发节点
     user_id,nickname,content
@@ -1272,7 +1272,7 @@ class Module:
         os.makedirs(dir_path, exist_ok=True)
         return Path(path).as_posix()
 
-    def node(self, *args, **kwargs):
+    def node(self, *args, **kwargs) -> dict:
         """
         生成一个转发节点
         user_id,nickname,content
