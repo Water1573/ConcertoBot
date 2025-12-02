@@ -364,7 +364,7 @@ class Concerto:
                 for _, obj in list(vars(module).items()):
                     if isinstance(obj, type) and hasattr(obj, "ID") and obj.ID and hasattr(obj, "NAME") and obj.NAME:
                         if obj.ID in self.config.disabled:
-                            self.printf(f"[{obj.ID}] 文件({item})有效, 但已禁用, 取消加载模块!")
+                            self.printf(f"{Fore.YELLOW}[{obj.ID}]{Fore.RESET} {Fore.RESET}{obj.NAME}({item})已禁用❌")
                             disabled = True
                             continue
                         is_module = True
@@ -372,7 +372,7 @@ class Concerto:
                         if getattr(obj, "AUTO_INIT", False):
                             obj(Event(self))
                 if not is_module and not disabled:
-                    self.warnf(f"文件[{item}]内没有有效的模块, 已取消加载!")
+                    self.warnf(f"文件[{item}]内没有有效的模块, 未接入❌")
         import_classes("modules")
 
     def module_enable(self, module: Module, module_file: str):
@@ -383,11 +383,11 @@ class Concerto:
         """
         if module.ID in self.modules:
             self.errorf(
-                f"载入失败！重名模块 {Fore.YELLOW}[{module.ID}] {module.NAME}({module_file}){Fore.RESET}"
+                f"{Fore.RED}[{module.ID}]{Fore.RESET} 重名模块{Fore.YELLOW}{module.NAME}({module_file}){Fore.RESET}载入失败！❌"
             )
         else:
             self.modules[module.ID] = module
-            self.printf(f"{Fore.CYAN}[{module.ID}] {Fore.RESET}{module.NAME}({module_file})已接入！")
+            self.printf(f"{Fore.CYAN}[{module.ID}]{Fore.RESET} {module.NAME}({module_file})已接入✔️")
 
     def sync(self, func: Callable) -> Any:
         future = asyncio.run_coroutine_threadsafe(func, self.loop)

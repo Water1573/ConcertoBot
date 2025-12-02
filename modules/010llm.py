@@ -69,7 +69,7 @@ class LLM(Module):
         """构建模型名称到配置的映射"""
         model_map = {}
         for model in self.config["models"]:
-            if model["type"] != model_type:
+            if model.get("type") != model_type:
                 continue
             provider = next(
                 (p for p in self.config["providers"] if p["name"] == model["provider"]),

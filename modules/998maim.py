@@ -531,11 +531,11 @@ class Maim(Module):
                 self.printf(f"{Fore.GREEN}[TO] {Fore.RESET}{simple_msg}")
             send_status = await self.router.send_message(msg)
             if not send_status:
+                self.failed_times += 1
                 raise RuntimeError("路由未正确配置或连接异常, 请检查与MaiMBot之间的连接")
             self.failed_times = 0
             return send_status
         except Exception as e:
-            self.failed_times += 1
             error_msg = f"发送消息失败: {traceback.format_exc()}"
             if isinstance(e, RuntimeError):
                 error_msg = f"{e}"
@@ -546,7 +546,6 @@ class Maim(Module):
                              f"|{msg.message_info.user_info.user_nickname}"
                              f":{msg.raw_message}")
                 self.robot.admin_notify(error_msg)
-            
 
     async def construct_message(self, event: Event = None) -> MessageBase | None:
         """根据平台事件构造标准 MessageBase"""
