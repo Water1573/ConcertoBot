@@ -530,10 +530,12 @@ class Maim(Module):
                 )
                 self.printf(f"{Fore.GREEN}[TO] {Fore.RESET}{simple_msg}")
             send_status = await self.router.send_message(msg)
+            maim = self.robot.persist_mods[self.ID]
             if not send_status:
-                self.failed_times += 1
+                maim.failed_times += 1
+                self.failed_times = maim.failed_times
                 raise RuntimeError("路由未正确配置或连接异常, 请检查与MaiMBot之间的连接")
-            self.failed_times = 0
+            maim.failed_times = 0
             return send_status
         except Exception as e:
             error_msg = f"发送消息失败: {traceback.format_exc()}"
@@ -541,10 +543,13 @@ class Maim(Module):
                 error_msg = f"{e}"
             self.errorf(f"{error_msg}(第{self.failed_times}次)")
             if self.failed_times == 3:
-                error_msg = (f"多次尝试发送消息后失败，请重启应用！"
-                             f"\n{msg.message_info.group_info.group_name}"
-                             f"|{msg.message_info.user_info.user_nickname}"
-                             f":{msg.raw_message}")
+                group_name = msg.message_info.group_info.group_name if msg.message_info.group_info else ""
+                nickname = msg.message_info.user_info.user_nickname if msg.message_info.user_info else ""
+                error_msg = ("多次尝试发送消息至麦麦机器人后失败，请重启应用！\n")
+                if group_name:
+                    error_msg += (f"{group_name}|{nickname}:{msg.raw_message}")
+                else:
+                    error_msg += (f"{nickname}:{msg.raw_message}")
                 self.robot.admin_notify(error_msg)
 
     async def construct_message(self, event: Event = None) -> MessageBase | None:

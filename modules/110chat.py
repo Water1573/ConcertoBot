@@ -48,7 +48,7 @@ class Chat(Module):
             "词云配色 [配色代码] | 更改词云配色",
             "[QQ账号或昵称]又叫做[称号] | 记录成员的称号",
             "成员列表 | 查看曾有称号记录在案的成员列表和称号",
-            "[QQ账号或昵称]曾说过: | 假装有人说过",
+            "[QQ账号或昵称]曾言道: | 假装有人说过",
             "刚刚撤回了什么 | 查看上一个撤回消息内容",
             "回复表情图片并@机器人(空内容) | 将表情包转化为链接"
             "回复消息并发送💩 | 增加💩贴表情"
@@ -336,15 +336,18 @@ class Chat(Module):
         self.success = True
         self.reply(msg, reply=True)
 
-    @via(lambda self: self.at_or_private() and self.au(2) and self.match(r"^\s*(\s?(\S+)(说|言)(道|过)?(:|：)(\S+)\s?)+\s*$"))
+    @via(lambda self: self.at_or_private() and self.au(2) and self.match(r"^(\S+)(说|言)(道|过)?(:|：)([\S+ ]+)"))
     def once_said(self):
         """曾言道"""
-        msg_said = re.findall(r"(\S+)(说|言)(道|过)?(:|：)(\S+)", self.event.msg)
+        msg_said = re.findall(r"(\S+)(说|言)(道|过)?(:|：)([\S ]+)", self.event.msg)
         msg_list = []
+        name_set = set()
         for said in msg_said:
             name = re.sub(r"曾?经?又?还?也?$", "", said[0])
+            name_set.add(name)
             # 防止某些图片发不出来
             content = re.sub(r",sub_type=\d", "", said[-1])
+            content = content.replace(r"\n", "\n").strip()
             uid = self.get_uid(name)
             if uid in self.config[self.owner_id]["users"]:
                 name = self.config[self.owner_id]["users"][uid]["nickname"]
@@ -355,7 +358,9 @@ class Chat(Module):
                 uid = self.event.user_id
             msg_list.append(self.node(content, user_id=uid, nickname=name))
         if msg_list:
-            self.reply_forward(msg_list)
+            if len(name_set) == 1:
+                return self.reply_forward(msg_list, source=f"{name}的聊天记录")
+            return self.reply_forward(msg_list)
         else:
             msg = "生成转发消息错误~"
             self.reply(msg)
@@ -429,7 +434,7 @@ class Chat(Module):
             self.reply(url, reply=True)
         self.success = True
 
-    @via(lambda self: self.au(2) and self.at_or_private() and self.match(r"(\S+?)(又|也|同时)能?被?(称|叫)(为|做)?(\S+)$"))
+    @via(lambda self: self.au(2) and self.at_or_private() and self.match(r"(\S+?)(又|也|同时|人)能?被?(称|叫)(为|做)?(\S+)$"))
     def set_label(self):
         """设置称号"""
         inputs = self.match(r"(\S+?)(又|也|同时)能?被?(称|叫)(为|做)?(\S+)").groups()
