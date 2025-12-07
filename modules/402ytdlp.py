@@ -199,7 +199,7 @@ class Ytdlp(Module):
             return self.reply_forward(nodes, source="视频解析失败")
         except Exception as e:
             self.errorf(traceback.format_exc())
-            nodes = self.node(f"{format_to_log(e)}")
+            nodes = self.node(f"{e}")
             self.robot.admin_notify("视频处理失败", nodes)
             return self.reply_forward(nodes, source="视频处理失败")
         finally:

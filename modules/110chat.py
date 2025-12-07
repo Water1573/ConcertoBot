@@ -472,14 +472,17 @@ class Chat(Module):
             nodes.append(self.node(msg))
         self.reply_forward(nodes, source="成员列表")
 
-    @via(lambda self: self.au(1) and not self.is_private() and self.match(r"^\[CQ:.*\]?(一键发电|❤️\s?)+$") and self.is_reply())
+    @via(lambda self: self.au(1) and not self.is_private() and self.match(r"^\[CQ:.*\]?(❤️\s?)+$") and self.is_reply())
     def praise(self):
         """一键发电"""
+        praise_times = self.event.text.count("❤️")
         reply_match = self.is_reply()
         msg_id = reply_match.group(1)
         emoji_list = [2, 6, 18, 63, 66, 76, 109, 116, 144, 175, 305, 311, 318, 319, 320, 350, 337, 339, 424, 426]
-        for emoji in emoji_list:
+        times = 1
+        for emoji in emoji_list and times < praise_times:
             set_emoji(self.robot, msg_id, emoji)
+            times += 1
             time.sleep(0.1)
 
     @via(lambda self: self.au(2) and not self.is_private() and self.match(r"^\[CQ:.*\](屎|史|💩)$") and self.is_reply())

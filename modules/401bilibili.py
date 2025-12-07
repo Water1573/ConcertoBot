@@ -713,8 +713,8 @@ class Bilibili(Module):
             dynamic_list = await u.get_dynamics_new()
             dynamics = dynamic_list.get("items") or []
             if len(dynamics) and not need_top:
-                text = dynamics[0].get("modules", {}).get("module_tag", {}).get("text", "")
-                if text == "置顶":
+                tag = dynamics[0].get("modules", {}).get("module_tag")
+                if tag and tag.get("text") == "置顶":
                     dynamics = dynamics[1:]
             return dynamics
         except NetworkException as e:
