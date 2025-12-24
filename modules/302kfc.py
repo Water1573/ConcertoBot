@@ -40,7 +40,7 @@ class KFC(Module):
             resp = httpx.get("https://api.pearktrue.cn/api/kfc")
             if resp.status_code != 200:
                 return
-            msg = resp.text.replace("\\\\", "\\")
+            msg = resp.text.replace(r"\\n", "\n")
             self.reply(msg)
             self.config[self.owner_id]["last_date"] = datetime.now().strftime("%Y%m%d")
             self.save_config()
@@ -55,7 +55,7 @@ class KFC(Module):
             resp = httpx.get("https://api.pearktrue.cn/api/kfc")
             if resp.status_code != 200:
                 return self.reply(f"KFC模块请求失败: 状态码 {resp.status_code}", reply=True)
-            msg = resp.text
+            msg = resp.text.replace(r"\\n", "\n")
             self.reply(msg, reply=True)
         except Exception as e:
             return self.reply_forward(self.node(f"{e}"), source="KFC模块请求失败")

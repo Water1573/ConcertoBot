@@ -1,6 +1,6 @@
 """群组处理模块"""
 
-from src.utils import Module, group_member_info, group_special_title, status_ok, via
+from src.utils import Module, group_member_info, group_special_title, status_ok, via, reply_id
 
 
 class Group(Module):
@@ -11,10 +11,16 @@ class Group(Module):
     HELP = {
         1: [
             "为[QQ账号或昵称](设置)头衔[头衔] | 为用户设置专属头衔(机器人需为群主)",
+            "(开启|关闭)群成员广播 | 如果是管理员，支持将群成员变动消息广播到群内",
         ],
     }
-    GLOBAL_CONFIG = None
-    CONV_CONFIG = None
+    CONV_CONFIG = {
+        "member_broadcast": {
+            "enable": False
+        }
+    }
+    HANDLE_NOTICE = True
+    HANDLE_REQUEST = True
 
     @via(lambda self: self.group_at() and self.au(1)
         and self.match(r"^(为|给|替)\s*(\S+)\s*(设置|添加|增加|颁发|设立)(专属)*(头衔|称号)\s*(\S+)$"))
@@ -37,3 +43,30 @@ class Group(Module):
             self.reply(f"为{user_id}设置群头衔[{title}]成功!")
         else:
             self.reply(f"为{user_id}设置群头衔[{title}]失败!")
+
+    @via(lambda self: self.group_at() and self.au(1)
+        and self.match(r"^(开启|启用|打开|记录|启动|关闭|禁用|取消)群成员广播"))
+    def group_member_broadcast(self):
+        msg = ""
+        if self.match(r"(开启|启用|打开|记录|启动)"):
+            self.config[self.owner_id]["member_broadcast"]["enable"] = True
+            msg = "入群广播已开启"
+        elif self.match(r"(关闭|禁用|取消)"):
+            self.config[self.owner_id]["member_broadcast"]["enable"] = False
+            msg = "入群广播已关闭"
+        self.save_config()
+        self.reply(msg)
+
+    @via(lambda self: self.config[self.owner_id]["member_broadcast"]["enable"]
+         and self.event.notice_type == ("group_decrease"))
+    def group_decrease(self):
+        reply_id(self.robot, "group", self.event.group_id,
+            f"{self.event.user_name}({self.event.user_id})已退出群聊")
+
+    @via(lambda self: self.config[self.owner_id]["member_broadcast"]["enable"]
+         and self.event.raw.get("request_type") == "group")
+    def group_request(self):
+        if self.event.raw.get("request_type") == "group":
+            comment = self.event.raw.get("comment")
+            reply_id(self.robot, "group", self.event.group_id,
+                f"{self.event.user_name}({self.event.user_id})申请入群~\n{comment}")
