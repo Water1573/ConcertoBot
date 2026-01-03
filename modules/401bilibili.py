@@ -910,8 +910,8 @@ class Bilibili(Module):
             origin = self.parse_dynamic(data.get("orig", {}))
         elif "DYNAMIC_TYPE_AV" == dynamic_type:
             archive = module_dynamic.get("major", {}).get("archive", {})
-            content = archive.get("jump_url", "") + "\n"
             content += archive.get("title", "") + "\n"
+            content = archive.get("jump_url", "").replace("//", "https://") + "\n"
             if cover := archive.get("cover"):
                 imgs.append(cover)
             content += "\n====================\n"
