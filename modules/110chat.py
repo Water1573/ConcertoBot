@@ -803,7 +803,7 @@ class Chat(Module):
         font_path = self.get_font()
         if font_path:
             wc_kwargs["font_path"] = font_path
-            self.printf(f"词云字体: {font_path}")
+            self.printf(f"词云字体: {font_path}", False)
 
         # 蒙版
         img = Image.new("L", (width, height), 255)
