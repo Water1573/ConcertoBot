@@ -769,6 +769,7 @@ class Chat(Module):
         except FileNotFoundError as e:
             raise FileNotFoundError(f"未检索到可用的停词表: {e.filename}") from e
         stopwords = set(lines)
+        self.printf("正在进行分词处理...", console=False)
         words = jieba.lcut(text)
         filtered = []
         for w in words:
@@ -803,7 +804,7 @@ class Chat(Module):
         font_path = self.get_font()
         if font_path:
             wc_kwargs["font_path"] = font_path
-            self.printf(f"词云字体: {font_path}", False)
+            self.printf(f"词云字体: {font_path}", console=False)
 
         # 蒙版
         img = Image.new("L", (width, height), 255)
