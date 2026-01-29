@@ -208,7 +208,7 @@ class Maim(Module):
         # 不重复发送消息
         if len(self.robot.self_message) > 0:
             past_msg = self.robot.self_message[-1].get("message")
-            if re.sub(r"\[CQ:.*?\]", "", msg) == re.sub(r"\[CQ:.*?\]", "", past_msg):
+            if re.sub(r"\[CQ:.*?\]", "", msg) != "" and re.sub(r"\[CQ:.*?\]", "", msg) == re.sub(r"\[CQ:.*?\]", "", past_msg):
                 self.warnf("消息与上一条消息相同，未发送")
                 return
         info = None
@@ -259,14 +259,14 @@ class Maim(Module):
                 new_payload = build_payload(payload, f"[CQ:reply,id={target_id}]", True)
             elif seg.type == "text":
                 text = seg.data
-                if match := re.search(r"\([@#](.*?)\)", text):
+                if match := re.search(r"[\(（][@#](.*?)[\)）]", text):
                     user_name = match.group(1)
                     user_id = get_user_id(self.robot, user_name, group_id)
-                    if re.search(r"\(#(.*?)\)", text):
+                    if re.search(r"[\(（]#(.*?)[\)）]", text):
                         poke(self.robot, user_id, group_id)
-                        text = re.sub(r"\(#(.*?)\)", "", text)
+                        text = re.sub(r"[\(（]#(.*?)[\)）]", "", text)
                     at_msg = f"[CQ:at,qq={user_id}]" if user_id else f"@{user_name}"
-                    text = re.sub(r"\(@(.*?)\)", at_msg, text)
+                    text = re.sub(r"[\(（]@(.*?)[\)）]", at_msg, text)
                 if not text:
                     return payload
                 new_payload = build_payload(payload, text, False)

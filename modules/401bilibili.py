@@ -553,12 +553,12 @@ class Bilibili(Module):
                 msg = dyn["content"]
                 if len(dyn["imgs"]) == 1:
                     img = dyn["imgs"][0]
-                    nodes.append(self.node(msg))
                     nodes.append(self.node(f"[CQ:image,file={img}]"))
+                    nodes.append(self.node(msg))
                 else:
+                    nodes.append(self.node(msg))
                     for img in dyn["imgs"]:
                         msg += f"[CQ:image,file={img}]"
-                    nodes.append(self.node(msg))
                 if ori := dyn["origin"]:
                     msg = f"以下是转发内容:\n====================\n"
                     msg += f"{ori["author"]}:\n"
@@ -910,8 +910,8 @@ class Bilibili(Module):
             origin = self.parse_dynamic(data.get("orig", {}))
         elif "DYNAMIC_TYPE_AV" == dynamic_type:
             archive = module_dynamic.get("major", {}).get("archive", {})
-            content += archive.get("title", "") + "\n"
-            content = archive.get("jump_url", "").replace("//", "https://") + "\n"
+            content = archive.get("title", "") + "\n"
+            content += archive.get("jump_url", "").replace("//", "https://") + "\n"
             if cover := archive.get("cover"):
                 imgs.append(cover)
             content += "\n====================\n"
