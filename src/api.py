@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 def get(robot: "Concerto", url, timeout=60):
     """GET请求"""
     try:
-        get_url = robot.config.api_base + url
+        get_url = robot.config.api_base.strip("/") + url
         robot.request_list.append(f"GET{url}")
         data = httpx.get(get_url, timeout=timeout)
         rev_json = data.json()
@@ -31,7 +31,7 @@ def post(robot: "Concerto", url, data, timeout=60):
     """POST请求"""
     try:
         data = json.dumps(data, ensure_ascii=False).encode("utf-8")
-        post_url = robot.config.api_base + url
+        post_url = robot.config.api_base.strip("/") + url
         robot.request_list.append(f"POST{url} | {data}")
         header = {"Content-Type": "application/json"}
         data = httpx.post(post_url, headers=header, data=data, timeout=timeout)

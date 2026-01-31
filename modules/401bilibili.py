@@ -255,13 +255,14 @@ class Bilibili(Module):
                             self.reply(msg)
                             return
                     title = f"[哔哩哔哩] {dyn["author"]}{self.type_msg.get(d_type, "发布了新动态")}"
-                    if d_type == "DYNAMIC_TYPE_AV":
-                        video_title = dyn["content"].split("\n")[0]
-                        if len(video_title) < 40:
-                            title = f"[哔哩哔哩] {video_title}"
                     nodes = []
                     nodes.append(self.node(dyn["url"]))
                     msg = dyn["content"]
+                    if d_type == "DYNAMIC_TYPE_AV":
+                        video_title = dyn["content"].split("\n")[0]
+                        if len(video_title) < 40:
+                            msg = title + "\n" + msg
+                            title = f"[哔哩哔哩] {video_title}"
                     if len(dyn["imgs"]) == 1:
                         img = dyn["imgs"][0]
                         nodes.append(self.node(f"[CQ:image,file={img}]"))
@@ -557,10 +558,12 @@ class Bilibili(Module):
                     nodes.append(self.node(msg))
                 else:
                     nodes.append(self.node(msg))
+                    img_msg = ""
                     for img in dyn["imgs"]:
-                        msg += f"[CQ:image,file={img}]"
+                        img_msg += f"[CQ:image,file={img}]"
+                    nodes.append(self.node(img_msg))
                 if ori := dyn["origin"]:
-                    msg = f"以下是转发内容:\n====================\n"
+                    msg = "以下是转发内容:\n\n"
                     msg += f"{ori["author"]}:\n"
                     msg += ori["content"]
                     for img in ori["imgs"]:

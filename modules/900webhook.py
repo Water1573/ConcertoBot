@@ -178,9 +178,7 @@ class Webhook(Module):
         ):
             latest_times = 0
             for i in reversed(self.msg_deque):
-                if ((msg_type and msg_type in i["type"])
-                    or (msg and msg in i["msg"])
-                ):
+                if ((msg_type and msg_type in i["type"]) and (msg is None or msg in i["msg"])):
                     latest_times += 1
                 else:
                     break
