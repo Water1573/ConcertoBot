@@ -5,7 +5,8 @@
 
 ## Usage
 - Python3.12
-- 使用pip install -r requirements.txt安装程序所需第三方库（如需安装其他模块请额外添加缺失库）
+- 如果没有安装poetry，请使用pip install poetry安装包管理器
+- 使用poetry install --no-root安装程序所需第三方库（如需启用独立模块请使用pip额外添加缺失库，缺失模块日志中会自动打印）
 - Windows用户请额外执行 pip install windows-curses
 - 启动"start.bat"或者"start.sh"
 

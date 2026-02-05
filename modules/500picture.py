@@ -554,6 +554,9 @@ class Picture(Module):
                     and item["vote_positive"] > 0
                     and item["vote_negative"] < 30
                     and item["vote_positive"] < 100):
+                    # 排除煎蛋本平台相关帖子，宁缺毋滥
+                    if "蛋" in item.get("content"):
+                        continue
                     result.append(item)
             self.printf(f"共请求到{len(result)}条有效的帖子")
             return result

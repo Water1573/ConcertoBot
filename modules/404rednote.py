@@ -21,7 +21,7 @@ class Rednote(Module):
     }
 
     def __init__(self, event, auth = 0):
-        self.video_pattern = r"(https?://[^\s&;,\[]*(xhslink.com/o|xiaohongshu.com/explore)[^\s&;,\"\u4e00-\u9fff\[]*)"
+        self.video_pattern = r"(https?://[^\s&;,\[]*(xhslink.com/o|xiaohongshu.com/)[^\s;,\"\u4e00-\u9fff\[]*)"
         super().__init__(event, auth)
 
     @via(lambda self: self.at_or_private() and self.au(2)
@@ -57,9 +57,9 @@ class Rednote(Module):
             url = url.encode("utf-8").decode("unicode_escape")
             return url
         else:
-            raise ReferenceError("未找到有效的视频链接")
+            raise ReferenceError(f"未在{url}找到有效的视频链接")
 
-    def retry(self, func: Callable[..., Any], name="", max_retries=5, delay=1, failed_ok=True) -> Any:
+    def retry(self, func: Callable[..., Any], name="", max_retries=3, delay=1, failed_ok=True) -> Any:
         """多次尝试执行"""
         for attempt in range(1, max_retries + 1):
             try:

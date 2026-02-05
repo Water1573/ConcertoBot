@@ -182,7 +182,7 @@ class Waifu(Module):
 
     @via(lambda self: self.au(self.config[self.owner_id].get("add_auth"))
          and self.config[self.owner_id].get("enable") 
-         and self.match(r"^添加?老婆"))
+         and self.match(r"添加?老婆 "))
     def add_waifu(self):
         """添加二次元老婆"""
         try:

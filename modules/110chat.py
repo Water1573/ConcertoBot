@@ -50,12 +50,12 @@ class Chat(Module):
             "成员列表 | 查看曾有称号记录在案的成员列表和称号",
             "[QQ账号或昵称]曾言道: | 假装有人说过",
             "刚刚撤回了什么 | 查看上一个撤回消息内容",
-            "回复表情图片并@机器人(空内容) | 将表情包转化为链接"
-            "回复消息并发送💩 | 增加💩贴表情"
+            "回复表情图片并@机器人(空内容) | 将表情包转化为链接",
+            "回复消息并发送💩 | 对回复的消息贴表情💩",
+            "回复消息并发送❤️ | 对回复的消息“一键发电”贴表情",
         ],
         1: [
             "(打开|关闭)词云 | 打开或关闭消息记录(默认关闭)",
-            "一键发电 | 对回复的消息进行大量的正面贴表情",
         ],
     }
     GLOBAL_CONFIG = {
@@ -472,14 +472,19 @@ class Chat(Module):
             nodes.append(self.node(msg))
         self.reply_forward(nodes, source="成员列表")
 
-    @via(lambda self: self.au(1) and not self.is_private() and self.match(r"^\[CQ:.*\]?(一键发电|❤️\s?)+$") and self.is_reply())
+    @via(lambda self: self.au(2) and not self.is_private() and self.match(r"^\[CQ:.*\]?[❤️\s]+$") and self.is_reply())
     def praise(self):
         """一键发电"""
+        praise_times = self.event.text.count("❤")
         reply_match = self.is_reply()
         msg_id = reply_match.group(1)
         emoji_list = [2, 6, 18, 63, 66, 76, 109, 116, 144, 175, 305, 311, 318, 319, 320, 350, 337, 339, 424, 426]
+        times = 1
         for emoji in emoji_list:
+            if times > praise_times:
+                return
             set_emoji(self.robot, msg_id, emoji)
+            times += 1
             time.sleep(0.1)
 
     @via(lambda self: self.au(2) and not self.is_private() and self.match(r"^\[CQ:.*\](屎|史|💩)$") and self.is_reply())
@@ -764,6 +769,7 @@ class Chat(Module):
         except FileNotFoundError as e:
             raise FileNotFoundError(f"未检索到可用的停词表: {e.filename}") from e
         stopwords = set(lines)
+        self.printf("正在进行分词处理...", console=False)
         words = jieba.lcut(text)
         filtered = []
         for w in words:
@@ -798,7 +804,7 @@ class Chat(Module):
         font_path = self.get_font()
         if font_path:
             wc_kwargs["font_path"] = font_path
-            self.printf(f"词云字体: {font_path}")
+            self.printf(f"词云字体: {font_path}", console=False)
 
         # 蒙版
         img = Image.new("L", (width, height), 255)

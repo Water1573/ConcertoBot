@@ -272,8 +272,8 @@ class Maim(Module):
 
         if len(self.robot.self_message) > 0:
             past_msg = self.robot.self_message[-1].get("message")
-            if re.sub(r"\[CQ:.*?\]", "", msg_str) == re.sub(r"\[CQ:.*?\]", "", past_msg):
-                self.warnf("检测到重复消息，已过滤")
+            if re.sub(r"\[CQ:.*?\]", "", msg) != "" and re.sub(r"\[CQ:.*?\]", "", msg) == re.sub(r"\[CQ:.*?\]", "", past_msg):
+                self.warnf("消息与上一条消息相同，未发送")
                 return
 
         info = None
@@ -288,9 +288,83 @@ class Maim(Module):
             info = reply_id(self.robot, msg_type, target_id, msg_str)
 
         if status_ok(info):
-            self.printf(f"{Fore.BLUE}[REPLY] {Fore.RESET}已发送回复至 {target_id}")
-        else:
-            self.warnf(f"消息发送失败: {info}")
+            qq_message_id = info["data"].get("message_id")
+            mmc_message_id = message_base.message_info.message_id
+            message_base.message_segment = Seg(
+                type="notify",
+                data={
+                    "sub_type": "echo",
+                    "echo": mmc_message_id,
+                    "actual_id": qq_message_id,
+                },
+            )
+            await self.send_to_maim(message_base)
+
+    def handle_seg(self, segment: Seg, group_id: int | None = None) -> str:
+        """处理消息结构"""
+        def build_payload(payload: str, msg: str, is_reply: bool = False) -> list:
+            """构建发送的消息体"""
+            if is_reply:
+                temp = ""
+                temp += msg
+                for i in payload:
+                    if i.get("type") == "reply":
+                        # 多个回复，使用最新的回复
+                        continue
+                    temp += i
+                return temp
+            else:
+                payload += msg
+                return payload
+
+        def process_message(seg: Seg, payload: str) -> str:
+            new_payload = payload
+            if seg.type == "reply":
+                target_id = seg.data
+                if target_id == "notice":
+                    return payload
+                new_payload = build_payload(payload, f"[CQ:reply,id={target_id}]", True)
+            elif seg.type == "text":
+                text = seg.data
+                if match := re.search(r"[\(（][@#](.*?)[\)）]", text):
+                    user_name = match.group(1)
+                    user_id = get_user_id(self.robot, user_name, group_id)
+                    if re.search(r"[\(（]#(.*?)[\)）]", text):
+                        poke(self.robot, user_id, group_id)
+                        text = re.sub(r"[\(（]#(.*?)[\)）]", "", text)
+                    at_msg = f"[CQ:at,qq={user_id}]" if user_id else f"@{user_name}"
+                    text = re.sub(r"[\(（]@(.*?)[\)）]", at_msg, text)
+                if not text:
+                    return payload
+                new_payload = build_payload(payload, text, False)
+            elif seg.type == "face":
+                face_id = seg.data
+                new_payload = build_payload(payload, f"[CQ:face,id={face_id}]", False)
+            elif seg.type == "image":
+                image = seg.data
+                new_payload = build_payload(payload, f"[CQ:image,file=base64://{image},sub_type=0]", False)
+            elif seg.type == "emoji":
+                emoji = seg.data
+                image_format = get_image_format(emoji)
+                if image_format != "gif":
+                    emoji = self.convert_image_to_gif(emoji)
+                new_payload = build_payload(payload, f"[CQ:image,file=base64://{emoji},sub_type=1,summary=&#91;动画表情&#93;]", False)
+            elif seg.type == "voice":
+                voice = seg.data
+                new_payload = build_payload(payload, f"[CQ:voice,file=base64://{voice}]", False)
+            elif seg.type == "voiceurl":
+                voice_url = seg.data
+                new_payload = build_payload(payload, f"[CQ:record,file={voice_url}]", False)
+            elif seg.type == "music":
+                song_id = seg.data
+                new_payload = build_payload(payload, f"[CQ:music,file={song_id}]", False)
+            elif seg.type == "videourl":
+                video_url = seg.data
+                new_payload = build_payload(payload, f"[CQ:video,file={video_url}]", False)
+            elif seg.type == "file":
+                file_path = seg.data
+                new_payload = build_payload(payload, f"[CQ:file,file=file://{file_path}]", False)
+            return new_payload
 
     def parse_reply_content(self, segment: Dict) -> str:
         """递归解析 ReplyContent 为 CQ 码字符串"""

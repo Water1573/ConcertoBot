@@ -255,13 +255,14 @@ class Bilibili(Module):
                             self.reply(msg)
                             return
                     title = f"[哔哩哔哩] {dyn["author"]}{self.type_msg.get(d_type, "发布了新动态")}"
-                    if d_type == "DYNAMIC_TYPE_AV":
-                        video_title = dyn["content"].split("\n")[0]
-                        if len(video_title) < 40:
-                            title = f"[哔哩哔哩] {video_title}"
                     nodes = []
                     nodes.append(self.node(dyn["url"]))
                     msg = dyn["content"]
+                    if d_type == "DYNAMIC_TYPE_AV":
+                        video_title = dyn["content"].split("\n")[0]
+                        if len(video_title) < 40:
+                            msg = title + "\n" + msg
+                            title = f"[哔哩哔哩] {video_title}"
                     if len(dyn["imgs"]) == 1:
                         img = dyn["imgs"][0]
                         nodes.append(self.node(f"[CQ:image,file={img}]"))
@@ -554,12 +555,15 @@ class Bilibili(Module):
                 if len(dyn["imgs"]) == 1:
                     img = dyn["imgs"][0]
                     nodes.append(self.node(f"[CQ:image,file={img}]"))
+                    nodes.append(self.node(msg))
                 else:
+                    nodes.append(self.node(msg))
+                    img_msg = ""
                     for img in dyn["imgs"]:
-                        msg += f"[CQ:image,file={img}]"
-                nodes.append(self.node(msg))
+                        img_msg += f"[CQ:image,file={img}]"
+                    nodes.append(self.node(img_msg))
                 if ori := dyn["origin"]:
-                    msg = f"以下是转发内容:\n====================\n"
+                    msg = "以下是转发内容:\n\n"
                     msg += f"{ori["author"]}:\n"
                     msg += ori["content"]
                     for img in ori["imgs"]:
@@ -713,8 +717,8 @@ class Bilibili(Module):
             dynamic_list = await u.get_dynamics_new()
             dynamics = dynamic_list.get("items") or []
             if len(dynamics) and not need_top:
-                text = dynamics[0].get("modules", {}).get("module_tag", {}).get("text", "")
-                if text == "置顶":
+                tag = dynamics[0].get("modules", {}).get("module_tag")
+                if tag and tag.get("text") == "置顶":
                     dynamics = dynamics[1:]
             return dynamics
         except NetworkException as e:
@@ -909,32 +913,33 @@ class Bilibili(Module):
             origin = self.parse_dynamic(data.get("orig", {}))
         elif "DYNAMIC_TYPE_AV" == dynamic_type:
             archive = module_dynamic.get("major", {}).get("archive", {})
-            content = archive.get("title", "")
-            content += "\n" + archive.get("jump_url", "")
+            content = archive.get("title", "") + "\n"
+            content += archive.get("jump_url", "").replace("//", "https://") + "\n"
             if cover := archive.get("cover"):
                 imgs.append(cover)
             content += "\n====================\n"
             content += archive.get("desc", "")
         elif "DYNAMIC_TYPE_DRAW" == dynamic_type:
             opus = module_dynamic.get("major", {}).get("opus", {})
-            content = opus.get("summary", {}).get("text", "")
+            content = opus.get("title", "") + "\n"
+            content += opus.get("summary", {}).get("text", "") + "\n"
             if pics := opus.get("pics"):
                 for pic in pics:
                     imgs.append(pic.get("url"))
         elif "DYNAMIC_TYPE_ARTICLE" == dynamic_type:
             opus = module_dynamic.get("major", {}).get("opus", {})
             url = opus.get("jump_url", "")
-            content = opus.get("title", "")
-            content += "\n" + opus.get("jump_url", "") + "\n"
-            content = opus.get("summary", {}).get("text", "")
+            content = opus.get("jump_url", "") + "\n"
+            content += opus.get("title", "") + "\n"
+            content += opus.get("summary", {}).get("text", "") + "\n"
             if pics := opus.get("pics"):
                 for pic in pics:
                     imgs.append(pic.get("url"))
         elif "DYNAMIC_TYPE_MUSIC" == dynamic_type:
             music = module_dynamic.get("major", {}).get("music", {})
-            content = module_dynamic.get("desc", {}).get("text", {})
-            content += "\n" + music.get("jump_url", "") + "\n"
-            content = music.get("title", "")
+            content = music.get("jump_url", "") + "\n"
+            content += music.get("title", "") + "\n"
+            content += module_dynamic.get("desc", {}).get("text", {}) + "\n"
             if cover := music.get("cover"):
                 imgs.append(cover)
         elif "DYNAMIC_TYPE_LIVE_RCMD" == dynamic_type:
@@ -948,7 +953,7 @@ class Bilibili(Module):
             "dynamic_id": dynamic_id,
             "dynamic_type": dynamic_type,
             "author": author,
-            "content": content,
+            "content": content.strip(),
             "imgs": imgs,
             "origin": origin,
         }

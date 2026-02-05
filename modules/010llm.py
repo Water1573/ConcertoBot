@@ -28,7 +28,7 @@ class LLM(Module):
         "models": [
             {
                 "type": "chat",
-                "model_identifier": "deepseek-chat",
+                "model": "deepseek-chat",
                 "name": "deepseek",
                 "provider": "DeepSeek"
             }
@@ -76,11 +76,11 @@ class LLM(Module):
                 None
             )
             if provider:
-                model_map[model["name"]] = {
-                    "name": model["name"],
-                    "model_identifier": model["model_identifier"],
-                    "provider_config": provider
-                }
+                model_map[model["name"]] = model.copy()
+                provider["max_retry"] = provider.get("max_retry", 2)
+                provider["timeout"] = provider.get("timeout", 30)
+                provider["retry_interval"] = provider.get("retry_interval", 3)
+                model_map[model["name"]] |= provider
         return model_map
 
     def get_request_params(self, model_name: str | None = None, model_type: str = "chat") -> Dict:
@@ -94,17 +94,7 @@ class LLM(Module):
             model_info = model_map[model_name]
         else:
             model_info = next(iter(model_map.values()))
-        provider = model_info["provider_config"]
-
-        return {
-            "name": model_info["name"],
-            "model": model_info["model_identifier"],
-            "base_url": provider["base_url"],
-            "api_key": provider["api_key"],
-            "max_retry": provider.get("max_retry", 2),
-            "timeout": provider.get("timeout", 30),
-            "retry_interval": provider.get("retry_interval", 10)
-        }
+        return model_info
 
     def build_headers(self, api_key: str, stream: bool) -> Dict[str, str]:
         return {
@@ -221,7 +211,7 @@ class LLM(Module):
                 "model": params["model"],
                 "input": text,
                 "response_format": "mp3",
-                "voice": "fishaudio/fish-speech-1.4:claire",
+                "voice": params["voice"],
             }
             self.printf(f"调用tts模型 {payload}")
             response = httpx.post(url, json=payload, headers=headers, timeout=params["timeout"])

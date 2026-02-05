@@ -87,6 +87,13 @@ class Ytdlp(Module):
             nodes = self.node(f"{format_to_log(e.msg)}")
             return self.reply_forward(nodes, source="视频解析失败")
         except Exception as e:
+            self.errorf(traceback.format_exc())
+            if "风控策略" in f"{e}":
+                return self.reply("412 由于触发哔哩哔哩安全风控策略，该次访问请求被拒绝", reply=True)
+            nodes = self.node(f"{e}")
+            self.robot.admin_notify(f"[{self.event.group_name or self.event.user_name}]视频处理失败", nodes)
+            return self.reply_forward(nodes, source="视频处理失败")
+        except Exception as e:
             nodes = self.node(f"{e}")
             return self.reply_forward(nodes, source="视频解析失败")
 
@@ -199,8 +206,10 @@ class Ytdlp(Module):
             return self.reply_forward(nodes, source="视频解析失败")
         except Exception as e:
             self.errorf(traceback.format_exc())
-            nodes = self.node(f"{format_to_log(e)}")
-            self.robot.admin_notify("视频处理失败", nodes)
+            if "风控策略" in f"{e}":
+                return self.reply("412 由于触发哔哩哔哩安全风控策略，该次访问请求被拒绝", reply=True)
+            nodes = self.node(f"{e}")
+            self.robot.admin_notify(f"[{self.event.group_name or self.event.user_name}]视频处理失败", nodes)
             return self.reply_forward(nodes, source="视频处理失败")
         finally:
             if os.path.exists(file_path):
